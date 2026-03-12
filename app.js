@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    NeuralNexus - Healthcare App Logic
    Page Navigation, Tab System, Feature Content
    ============================================================ */
@@ -411,12 +411,13 @@ const ALL_SYMPTOMS = [...new Set(DISEASES.flatMap(d => d.symptoms))].sort();
 let selectedSymptoms = new Set();
 
 function getDiseaseDetectionHTML() {
-  return '<div class="content-card"><h3>🔍 Enter Your Symptoms</h3><p class="card-sub">Type a symptom and press Enter or click to add.</p>' +
+  return '<div class="content-card" id="symptom-input-section"><h3>🔍 Enter Your Symptoms</h3><p class="card-sub">Type a symptom and press Enter or click to add.</p>' +
     '<div class="input-row"><div class="input-wrapper"><input type="text" id="symptom-input" placeholder="e.g. fever, headache, chest pain…" autocomplete="off"><div id="suggestions" class="suggestions hidden"></div></div>' +
     '<button class="btn-add" onclick="addSymptomFromInput()">+ Add</button></div>' +
     '<div id="symptom-tags" class="symptom-tags"></div>' +
     '<div class="quick-symptoms"><span class="qs-label">Quick add:</span><div class="qs-chips" id="quick-chips"></div></div>' +
-    '<button class="btn-primary btn-teal" id="analyze-btn" onclick="analyzeSymptoms()" disabled><span>🤖</span> Analyze Symptoms</button></div>' +
+    '<button class="btn-primary btn-teal" id="analyze-btn" onclick="startAnalysisFlow()" disabled><span>🤖</span> Analyze Symptoms</button></div>' +
+    '<div id="questionnaire-section" class="hidden"></div>' +
     '<div id="results-section" class="results-section hidden"></div>';
 }
 
@@ -489,7 +490,119 @@ function renderSymptomTags() {
   }).join('');
 }
 
-function analyzeSymptoms() {
+// ── INTERACTIVE QUESTIONNAIRE LOGIC ─────────────────────────────
+const FOLLOW_UP_QUESTIONS = [
+  {
+    trigger: 'fever',
+    id: 'fever_temp',
+    text: 'What is your body temperature?',
+    options: ['99–100°F', '101–102°F', '103°F+']
+  },
+  {
+    trigger: 'headache',
+    id: 'has_headache',
+    text: 'Do you have a headache?',
+    options: ['Yes', 'No']
+  },
+  {
+    trigger: 'cough',
+    id: 'has_cough',
+    text: 'Do you have a cough?',
+    options: ['Yes', 'No']
+  },
+  {
+    trigger: 'body pain',
+    id: 'has_body_pain',
+    text: 'Do you have body pain?',
+    options: ['Yes', 'No']
+  }
+];
+
+let questionnaireAnswers = {};
+let activeQuestions = [];
+
+function startAnalysisFlow() {
+  if (selectedSymptoms.size === 0) return;
+  
+  // Reset previous state
+  questionnaireAnswers = {};
+  activeQuestions = [];
+  
+  const symptomsList = Array.from(selectedSymptoms);
+  
+  // Find which follow-up questions are triggered
+  FOLLOW_UP_QUESTIONS.forEach(q => {
+    // If the trigger symptom was explicitly selected, OR we just want to ask these common ones anyway
+    // Here we'll ask if ANY of these related symptoms are selected to be safe,
+    // or we can just strictly match. Let's ask if they specifically added 'fever', etc.
+    // For a better UX based on the prompt, let's ask these standard follow ups if ANY of them trigger, 
+    // or just ask the ones related to their input.
+    if (symptomsList.includes(q.trigger) || symptomsList.includes('fever')) {
+      // Avoid duplicates if we trigger broadly
+      if (!activeQuestions.some(aq => aq.id === q.id)) {
+        activeQuestions.push(q);
+      }
+    }
+  });
+  
+  // If no questions match, or they didn't select fever/cough/etc, we can just skip straight to analyze
+  // However, the prompt implies these are the standard follow ups if they pick something like 'fever'.
+  if (activeQuestions.length > 0) {
+    renderQuestionnaire();
+  } else {
+    // Skip to final analysis directly
+    completeAnalysis();
+  }
+}
+
+function renderQuestionnaire() {
+  const inputSection = document.getElementById('symptom-input-section');
+  const questSection = document.getElementById('questionnaire-section');
+  const resultsSection = document.getElementById('results-section');
+  
+  if (inputSection) inputSection.classList.add('hidden');
+  if (resultsSection) resultsSection.classList.add('hidden');
+  if (questSection) questSection.classList.remove('hidden');
+  
+  let html = '<div class="content-card questionnaire-card"><h3>📋 Follow-up Questions</h3><p class="card-sub">Please answer a few quick questions to help us understand your condition better.</p><div class="q-list">';
+  
+  activeQuestions.forEach((q, index) => {
+    html += '<div class="follow-up-q"><h4>' + (index + 1) + '. ' + escapeHtml(q.text) + '</h4><div class="q-options">';
+    q.options.forEach(opt => {
+      html += '<button class="q-opt-btn" data-qid="' + q.id + '" data-val="' + escapeHtml(opt) + '" onclick="selectQuestionAnswer(this, \'' + q.id + '\', \'' + escapeHtml(opt) + '\')">' + escapeHtml(opt) + '</button>';
+    });
+    html += '</div></div>';
+  });
+  
+  html += '</div>';
+  html += '<div class="q-actions"><button class="btn-primary" style="background:var(--surface);color:var(--text);border:1px solid var(--border);" onclick="cancelQuestionnaire()">Back</button>';
+  html += '<button class="btn-primary btn-teal" onclick="completeAnalysis()">🔍 Analyze</button></div>';
+  html += '</div>';
+  
+  questSection.innerHTML = html;
+}
+
+function selectQuestionAnswer(btn, qid, val) {
+  questionnaireAnswers[qid] = val;
+  const siblings = btn.parentElement.querySelectorAll('.q-opt-btn');
+  siblings.forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function cancelQuestionnaire() {
+  const inputSection = document.getElementById('symptom-input-section');
+  const questSection = document.getElementById('questionnaire-section');
+  if (inputSection) inputSection.classList.remove('hidden');
+  if (questSection) questSection.classList.add('hidden');
+}
+
+function completeAnalysis() {
+  const questSection = document.getElementById('questionnaire-section');
+  if (questSection) questSection.classList.add('hidden');
+  
+  const inputSection = document.getElementById('symptom-input-section');
+  if (inputSection) inputSection.classList.remove('hidden');
+  
   if (selectedSymptoms.size === 0) return;
   var symptoms = Array.from(selectedSymptoms);
 
@@ -515,11 +628,36 @@ function analyzeSymptoms() {
     return;
   }
 
-  var topRisk = scored[0].disease.risk;
+  var topDisease = scored[0].disease;
+  var topRisk = topDisease.risk;
+  
+  // Contextual modifications based on interactive questionnaire
+  if (questionnaireAnswers['fever_temp'] === '103°F+') {
+    topRisk = 'high'; // Escalate risk if fever is very high
+    
+    // Auto-escalate the Dengue probability if high fever and body pain exist
+    if (questionnaireAnswers['has_body_pain'] === 'Yes') {
+      const dengueMatch = scored.find(s => s.disease.id === 'dengue');
+      if (dengueMatch) {
+         // Force Dengue closer to top if these symptoms match
+         dengueMatch.matchPercent += 20; 
+         scored.sort(function(a, b) { return b.matchPercent - a.matchPercent; });
+      }
+    }
+  }
+
   var riskColors = { low: 'low', medium: 'medium', high: 'high' };
   var riskDescs = { low: 'Monitor symptoms at home.', medium: 'Consider seeing a doctor.', high: 'Seek medical attention soon.' };
 
-  var html = '<div class="content-card risk-card"><div class="risk-label">Overall Risk Level</div>' +
+  // Adjust recommendation text dynamically if needed based on the user's specific answers
+  let customRecHTML = '';
+  if (questionnaireAnswers['fever_temp'] === '103°F+') {
+     customRecHTML += '<div class="rec-item"><span class="rec-icon">🚨</span><span><strong>Immediate Action:</strong> Your fever is very high (103°F+). Please consult a doctor immediately.</span></div>';
+  } else if (questionnaireAnswers['fever_temp'] === '101–102°F') {
+     customRecHTML += '<div class="rec-item"><span class="rec-icon">⚠️</span><span><strong>Note:</strong> Drink fluids, rest, and consult a doctor if fever exceeds 102°F.</span></div>';
+  }
+
+  var html = '<div class="content-card risk-card"><div class="risk-label">Risk Level</div>' +
     '<div class="risk-badge ' + riskColors[topRisk] + '">' + topRisk.toUpperCase() + '</div>' +
     '<div class="risk-desc">' + riskDescs[topRisk] + '</div>' +
     '<div class="risk-meter"><div class="risk-fill ' + riskColors[topRisk] + '"></div></div></div>';
@@ -533,9 +671,14 @@ function analyzeSymptoms() {
   });
   html += '</div></div>';
 
-  var topDisease = scored[0].disease;
-  html += '<div class="content-card"><h3>📋 What To Do Next</h3><div class="recommendations-list">';
-  topDisease.recs.forEach(function(r) {
+  var finalTopDisease = scored[0].disease;
+  html += '<div class="content-card"><h3>📋 Recommendation</h3><div class="recommendations-list">';
+  
+  if (customRecHTML) {
+    html += customRecHTML;
+  }
+  
+  finalTopDisease.recs.forEach(function(r) {
     html += '<div class="rec-item"><span class="rec-icon">' + r.i + '</span><span>' + r.t + '</span></div>';
   });
   html += '</div></div>';
@@ -557,23 +700,150 @@ function closeEmergency() {
   if (modal) modal.classList.add('hidden');
 }
 
-// ── NEARBY HOSPITALS ─────────────────────────────────────────
-var HOSPITALS = [
-  { name:'City General Hospital', addr:'123 Main St, Downtown', dist:'0.8 km', phone:'112' },
-  { name:'Metro Medical Center', addr:'456 Oak Ave, Midtown', dist:'1.2 km', phone:'108' },
-  { name:'St. Mary\'s Hospital', addr:'789 Pine Rd, Uptown', dist:'2.1 km', phone:'112' },
-  { name:'Community Health Clinic', addr:'321 Elm St, Eastside', dist:'0.5 km', phone:'108' },
-  { name:'University Hospital', addr:'654 Maple Dr, Campus Area', dist:'3.0 km', phone:'112' },
-  { name:'Children\'s Medical Center', addr:'987 Cedar Ln, Westside', dist:'1.8 km', phone:'108' }
-];
+// ── GEOLOCATION & LOCATION STATE ────────────────────────────
+var currentLocation = null;
+var nearbyHospitals = [];
+var nearbyPharmacies = [];
 
-function getNearbyHospitalsHTML() {
-  var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Click any card for directions.</p></div><div class="hospital-grid">';
-  HOSPITALS.forEach(function(h) {
-    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/' + encodeURIComponent(h.name) + '\', \'_blank\')">' +
-      '<h4>' + escapeHtml(h.name) + '</h4><p>' + escapeHtml(h.addr) + '</p><span class="distance">' + h.dist + '</span></div>';
+function getCurrentLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(position) {
+        currentLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        console.log('Location obtained:', currentLocation);
+        searchNearbyPlaces('hospital', 'nearby-hospitals');
+      },
+      function(error) {
+        console.error('Geolocation error:', error);
+        alert('Unable to get your location. Please enable location services.');
+      }
+    );
+  } else {
+    alert('Geolocation is not supported by your browser.');
+  }
+}
+
+function searchNearbyPlaces(placeType, tabId) {
+  if (!currentLocation) {
+    alert('Location not available. Please enable location services.');
+    return;
+  }
+
+  var service = new google.maps.places.PlacesService(document.createElement('div'));
+  var searchType = placeType === 'hospital' ? 'hospital' : 'pharmacy';
+  
+  var request = {
+    location: new google.maps.LatLng(currentLocation.lat, currentLocation.lng),
+    radius: 5000,
+    type: searchType
+  };
+
+  service.nearbySearch(request, function(results, status) {
+    if (status === google.maps.places.PlacesServiceStatus.OK) {
+      if (placeType === 'hospital') {
+        nearbyHospitals = results.slice(0, 8);
+        updateNearbyHospitalsDisplay();
+      } else {
+        nearbyPharmacies = results.slice(0, 8);
+        updateNearbyPharmaciesDisplay();
+      }
+    } else {
+      console.error('Places service error:', status);
+      alert('Unable to find nearby ' + (placeType === 'hospital' ? 'hospitals' : 'pharmacies') + '. Please try again.');
+    }
+  });
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  var distance = R * c;
+  return distance.toFixed(1);
+}
+
+function updateNearbyHospitalsDisplay() {
+  var panelBody = document.querySelector('[data-tab-id="nearby-hospitals"] .panel-body') || 
+                  document.getElementById('panel-nearby-hospitals')?.querySelector('.panel-body');
+  if (!panelBody) return;
+  
+  var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Found ' + nearbyHospitals.length + ' hospitals near you</p></div><div class="hospital-grid">';
+  nearbyHospitals.forEach(function(h) {
+    var distance = calculateDistance(currentLocation.lat, currentLocation.lng, h.geometry.location.lat(), h.geometry.location.lng());
+    var rating = h.rating ? '⭐ ' + h.rating.toFixed(1) : 'No rating';
+    var operational = h.opening_hours ? (h.opening_hours.open_now ? '🟢 Open Now' : '🔴 Closed') : 'Status Unknown';
+    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(h.name) + '&query_place_id=' + h.place_id + '\', \'_blank\')">' +
+      '<h4>' + escapeHtml(h.name) + '</h4>' +
+      '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(h.vicinity) + '</p>' +
+      '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
+      '<span>' + distance + ' km away</span>' +
+      '<span>' + rating + '</span>' +
+      '</div>' +
+      '<span class="distance" style="margin-top:4px;display:block;">' + operational + '</span>' +
+      '</div>';
   });
   html += '</div>';
+  panelBody.innerHTML = html;
+}
+
+function updateNearbyPharmaciesDisplay() {
+  var panelBody = document.querySelector('[data-tab-id="nearby-pharmacy"] .panel-body') || 
+                  document.getElementById('panel-nearby-pharmacy')?.querySelector('.panel-body');
+  if (!panelBody) return;
+  
+  var html = '<div class="content-card"><h3>💊 Nearby Pharmacies</h3><p class="card-sub">Found ' + nearbyPharmacies.length + ' pharmacies near you</p></div><div class="hospital-grid">';
+  nearbyPharmacies.forEach(function(p) {
+    var distance = calculateDistance(currentLocation.lat, currentLocation.lng, p.geometry.location.lat(), p.geometry.location.lng());
+    var rating = p.rating ? '⭐ ' + p.rating.toFixed(1) : 'No rating';
+    var operational = p.opening_hours ? (p.opening_hours.open_now ? '🟢 Open Now' : '🔴 Closed') : 'Status Unknown';
+    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.name) + '&query_place_id=' + p.place_id + '\', \'_blank\')">' +
+      '<h4>' + escapeHtml(p.name) + '</h4>' +
+      '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(p.vicinity) + '</p>' +
+      '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
+      '<span>' + distance + ' km away</span>' +
+      '<span>' + rating + '</span>' +
+      '</div>' +
+      '<span class="distance" style="margin-top:4px;display:block;">' + operational + '</span>' +
+      '</div>';
+  });
+  html += '</div>';
+  panelBody.innerHTML = html;
+}
+
+// ── NEARBY HOSPITALS ─────────────────────────────────────────
+function getNearbyHospitalsHTML() {
+  var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Find hospitals near your current location.</p>';
+  html += '<button class="btn-primary btn-teal" onclick="getCurrentLocation(); searchNearbyPlaces(\'hospital\', \'nearby-hospitals\')" style="width:100%;margin-bottom:12px;"><span>📍</span> Get My Location & Search</button>';
+  html += '</div>';
+  
+  if (nearbyHospitals.length === 0) {
+    html += '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:var(--text-dim);">📍 Click the button above to enable location and find nearby hospitals.</p></div>';
+  } else {
+    html += '<div class="hospital-grid">';
+    nearbyHospitals.forEach(function(h) {
+      var distance = calculateDistance(currentLocation.lat, currentLocation.lng, h.geometry.location.lat(), h.geometry.location.lng());
+      var rating = h.rating ? '⭐ ' + h.rating.toFixed(1) : 'No rating';
+      var operational = h.opening_hours ? (h.opening_hours.open_now ? '🟢 Open Now' : '🔴 Closed') : 'Status Unknown';
+      html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(h.name) + '&query_place_id=' + h.place_id + '\', \'_blank\')">' +
+        '<h4>' + escapeHtml(h.name) + '</h4>' +
+        '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(h.vicinity) + '</p>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
+        '<span>' + distance + ' km away</span>' +
+        '<span>' + rating + '</span>' +
+        '</div>' +
+        '<span class="distance" style="margin-top:4px;display:block;">' + operational + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+  }
+  
   return html;
 }
 
