@@ -1,0 +1,71 @@
+# NeuralNexus AI Backend
+
+Express.js backend server for the NeuralNexus mental health AI chatbot powered by Google Gemini API.
+
+## Setup
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Configure environment variables:**
+   - Copy `.env.example` to `.env`
+   - Add your Google Gemini API key:
+     ```
+     GEMINI_API_KEY=your_api_key_here
+     ```
+
+3. **Start the server:**
+   ```bash
+   # Production
+   npm start
+
+   # Development (with auto-reload)
+   npm run dev
+   ```
+
+The server will run on `http://localhost:3001`
+
+## API Endpoints
+
+### POST /chat
+Send a message to the AI chatbot.
+
+**Request:**
+```json
+{
+  "message": "I'm feeling anxious",
+  "history": [
+    { "role": "user", "content": "Hello" },
+    { "role": "assistant", "content": "Hi, how are you?" }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "reply": "I understand you're feeling anxious..."
+}
+```
+
+### GET /health
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "OK",
+  "service": "NeuralNexus AI Backend"
+}
+```
+
+## Features
+
+- Mental health-focused conversational AI
+- Emotional state detection
+- Empathetic and personalized responses
+- Crisis intervention guidance
+- Conversation history support
+- CORS enabled for frontend integration

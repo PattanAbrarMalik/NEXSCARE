@@ -24,10 +24,12 @@ const TAB_TITLES = {
   'nearby-hospitals': '🏥 Nearby Hospitals',
   'nearby-pharmacy': '💊 Nearby Pharmacy',
   'health-tips': '💡 Health Tips',
+  'consult-doctor': '👨‍⚕️ Consult Doctor',
   'depression-test': '📋 Depression Test',
   'mood-tracker': '📊 Mood Tracker',
   'ai-advice': '🤖 AI Advice',
-  'meditation-guidance': '🧘 Meditation Guidance'
+  'meditation-guidance': '🧘 Meditation Guidance',
+  'daily-diary': '📓 Daily Diary'
 };
 
 let panelZIndex = 100;
@@ -372,10 +374,12 @@ function getTabContent(tabId) {
     case 'nearby-hospitals': return getNearbyHospitalsHTML();
     case 'nearby-pharmacy': return getNearbyPharmacyHTML();
     case 'health-tips': return getHealthTipsHTML();
+    case 'consult-doctor': return getConsultDoctorHTML();
     case 'depression-test': return getDepressionTestHTML();
     case 'mood-tracker': return getMoodTrackerHTML();
     case 'ai-advice': return getAIAdviceHTML();
     case 'meditation-guidance': return getMeditationGuidanceHTML();
+    case 'daily-diary': return getDiaryHTML();
     default: return '<p>Content not available</p>';
   }
 }
@@ -886,6 +890,83 @@ function getHealthTipsHTML() {
   return html;
 }
 
+// ── CONSULT DOCTOR ───────────────────────────────────────────
+
+const DOCTORS = [
+  { id: 1, name: 'Dr. Sarah Jenkins', spec: 'General Physician', exp: '12 Years Exp', rating: 4.8, available: true, img: '👩‍⚕️' },
+  { id: 2, name: 'Dr. Michael Chen', spec: 'Cardiologist', exp: '15 Years Exp', rating: 4.9, available: true, img: '👨‍⚕️' },
+  { id: 3, name: 'Dr. Priya Sharma', spec: 'Dermatologist', exp: '8 Years Exp', rating: 4.7, available: false, img: '👩‍⚕️' },
+  { id: 4, name: 'Dr. David Wilson', spec: 'Neurologist', exp: '20 Years Exp', rating: 4.9, available: true, img: '👨‍⚕️' },
+  { id: 5, name: 'Dr. Emily Carter', spec: 'Psychiatrist', exp: '10 Years Exp', rating: 4.6, available: true, img: '👩‍⚕️' },
+  { id: 6, name: 'Dr. Robert Fox', spec: 'General Physician', exp: '5 Years Exp', rating: 4.5, available: true, img: '👨‍⚕️' }
+];
+
+function getConsultDoctorHTML() {
+  var html = '<div class="content-card"><h3>👨‍⚕️ Consult a Doctor</h3><p class="card-sub">Connect with top specialists for online or in-person consultations.</p>';
+  
+  // Category Filter
+  html += `
+    <div class="doctor-filter">
+      <select id="doctor-spec-filter" onchange="filterDoctors(this.value)">
+        <option value="all">All Specialties</option>
+        <option value="General Physician">General Physician</option>
+        <option value="Cardiologist">Cardiologist</option>
+        <option value="Dermatologist">Dermatologist</option>
+        <option value="Neurologist">Neurologist</option>
+        <option value="Psychiatrist">Psychiatrist</option>
+      </select>
+    </div>
+    <div class="doctor-grid" id="doctor-grid">
+  `;
+  
+  html += renderDoctorCards(DOCTORS);
+  
+  html += '</div></div>';
+  return html;
+}
+
+function renderDoctorCards(docs) {
+  if (docs.length === 0) return '<p>No doctors found for this specialty.</p>';
+  
+  return docs.map(doc => `
+    <div class="doctor-card">
+      <div class="doctor-card-header">
+        <div class="doctor-avatar">${doc.img}</div>
+        <div class="doctor-info">
+          <h4>${doc.name}</h4>
+          <p class="doctor-spec">${doc.spec}</p>
+          <p class="doctor-exp">${doc.exp} • ⭐ ${doc.rating}</p>
+        </div>
+      </div>
+      <div class="doctor-card-footer">
+        <span class="doctor-status ${doc.available ? 'online' : 'offline'}">
+          ${doc.available ? '🟢 Available Today' : '🔴 Next Available Tmrw'}
+        </span>
+        <button class="btn-book ${doc.available ? '' : 'disabled'}" 
+          onclick="${doc.available ? `bookAppointment('${doc.name}', '${doc.spec}')` : ''}">
+          Book Now
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterDoctors(spec) {
+  var grid = document.getElementById('doctor-grid');
+  if (!grid) return;
+  
+  if (spec === 'all') {
+    grid.innerHTML = renderDoctorCards(DOCTORS);
+  } else {
+    var filtered = DOCTORS.filter(d => d.spec === spec);
+    grid.innerHTML = renderDoctorCards(filtered);
+  }
+}
+
+function bookAppointment(docName, docSpec) {
+  alert('Booking request sent for ' + docName + ' (' + docSpec + ').\n\nThe doctor\'s clinic will contact you shortly to confirm the time slots.');
+}
+
 // ── DEPRESSION TEST ──────────────────────────────────────────
 var DEPRESSION_QUESTIONS = [
   'Little interest or pleasure in doing things?',
@@ -1119,6 +1200,86 @@ function updateTimerDisplay() {
   display.textContent = m + ':' + (s < 10 ? '0' : '') + s;
 }
 
+// ── DAILY DIARY FEATURE ──────────────────────────────────────
+var diaryLog = JSON.parse(localStorage.getItem('nn_diary_log') || '[]');
+
+function getDiaryHTML() {
+  var html = '<div class="content-card"><h3>📓 Daily Diary</h3><p class="card-sub">Write down your thoughts. Journaling can help clear your mind and track your progress.</p>' +
+    '<textarea id="diary-textarea" class="diary-textarea" placeholder="How are you feeling today? What happened?"></textarea>' +
+    '<button class="btn-primary btn-purple diary-btn" onclick="saveDiaryEntry()">Save Entry</button></div>';
+  
+  html += '<div class="content-card"><h3>📅 Past Entries</h3><div id="diary-entries-container" class="diary-entries-container">';
+  html += renderDiaryEntriesList();
+  html += '</div></div>';
+  return html;
+}
+
+function renderDiaryEntriesList() {
+  if (diaryLog.length === 0) {
+    return '<p style="color:var(--text-dim); text-align:center; padding: 20px;">No entries yet. Start writing your first one above.</p>';
+  }
+  
+  // Sort by date descending
+  var sortedLog = [...diaryLog].sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  var html = '';
+  sortedLog.forEach(function(entry) {
+    var dateObj = new Date(entry.date);
+    var dateStr = dateObj.toLocaleDateString('en', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+    var timeStr = dateObj.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
+    
+    html += '<div class="diary-entry-card">' +
+      '<div class="diary-entry-header">' +
+        '<span class="diary-entry-date">' + dateStr + '</span>' +
+        '<span class="diary-entry-time">' + timeStr + '</span>' +
+      '</div>' +
+      '<div class="diary-entry-text">' + escapeHtml(entry.text).replace(/\n/g, '<br>') + '</div>' +
+      '<button class="diary-delete-btn" onclick="deleteDiaryEntry(' + entry.id + ')" title="Delete entry">🗑️</button>' +
+    '</div>';
+  });
+  
+  return html;
+}
+
+function saveDiaryEntry() {
+  var textarea = document.getElementById('diary-textarea');
+  if (!textarea) return;
+  
+  var text = textarea.value.trim();
+  if (!text) {
+    alert('Please write something before saving.');
+    return;
+  }
+  
+  var newEntry = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    text: text
+  };
+  
+  diaryLog.push(newEntry);
+  localStorage.setItem('nn_diary_log', JSON.stringify(diaryLog));
+  
+  textarea.value = '';
+  
+  var container = document.getElementById('diary-entries-container');
+  if (container) {
+    container.innerHTML = renderDiaryEntriesList();
+  }
+}
+
+function deleteDiaryEntry(id) {
+  if (!confirm('Are you sure you want to delete this specific diary entry?')) return;
+  
+  diaryLog = diaryLog.filter(entry => entry.id !== id);
+  localStorage.setItem('nn_diary_log', JSON.stringify(diaryLog));
+  
+  var container = document.getElementById('diary-entries-container');
+  if (container) {
+    container.innerHTML = renderDiaryEntriesList();
+  }
+}
+
 // ── TAB FEATURE INITIALIZATION ───────────────────────────────
 function initTabFeature(tabId) {
   switch (tabId) {
@@ -1131,6 +1292,128 @@ function initTabFeature(tabId) {
 
 // ── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-  // Start on landing page
   navigateTo('landing');
+  initChatbot();
 });
+
+// ── AI CHATBOT ───────────────────────────────────────────────
+const CHAT_BACKEND_URL = 'http://localhost:3001/chat';
+var chatHistory = [];
+
+function initChatbot() {
+  // Show welcome message
+  appendMessage('ai', "Hi there 👋 I'm **NeuralNexus AI**, your personal mental health companion. You can talk to me about anything — how you're feeling, stress, anxiety, or just your day. I'm here to listen. 💙");
+}
+
+function appendMessage(role, text) {
+  var container = document.getElementById('chatbot-messages');
+  if (!container) return;
+
+  var now = new Date();
+  var timeStr = now.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
+
+  var msg = document.createElement('div');
+  msg.className = 'chat-msg ' + role;
+
+  var icon = role === 'user' ? '👤' : '🧠';
+
+  // Convert basic markdown-like **bold** to <strong>
+  var formattedText = escapeHtml(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+
+  msg.innerHTML =
+    '<div class="chat-msg-icon">' + icon + '</div>' +
+    '<div>' +
+      '<div class="chat-bubble">' + formattedText + '</div>' +
+      '<div class="chat-msg-time">' + timeStr + '</div>' +
+    '</div>';
+
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
+}
+
+function showTypingIndicator() {
+  var container = document.getElementById('chatbot-messages');
+  if (!container) return;
+  var typing = document.createElement('div');
+  typing.className = 'chat-msg ai';
+  typing.id = 'chat-typing-indicator';
+  typing.innerHTML =
+    '<div class="chat-msg-icon">🧠</div>' +
+    '<div class="chat-bubble chat-typing"><span></span><span></span><span></span></div>';
+  container.appendChild(typing);
+  container.scrollTop = container.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  var el = document.getElementById('chat-typing-indicator');
+  if (el) el.remove();
+}
+
+async function sendChatMessage() {
+  var input = document.getElementById('chatbot-input');
+  var sendBtn = document.getElementById('chatbot-send-btn');
+  if (!input) return;
+
+  var message = input.value.trim();
+  if (!message) return;
+
+  // Display user message
+  appendMessage('user', message);
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Record in history
+  chatHistory.push({ role: 'user', content: message });
+
+  // Disable button while waiting
+  if (sendBtn) sendBtn.disabled = true;
+  showTypingIndicator();
+
+  try {
+    var res = await fetch(CHAT_BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: message,
+        history: chatHistory.slice(-10) // last 10 messages for context
+      })
+    });
+
+    var data = await res.json();
+    removeTypingIndicator();
+
+    if (data.reply) {
+      appendMessage('ai', data.reply);
+      chatHistory.push({ role: 'ai', content: data.reply });
+    } else {
+      appendMessage('ai', 'Sorry, I had trouble understanding that. Could you rephrase?');
+    }
+  } catch (err) {
+    removeTypingIndicator();
+    appendMessage('ai', '⚠️ Cannot connect to NeuralNexus AI server. Please make sure the backend is running on port 3001.\n\n`cd backend && npm install && node server.js`');
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function handleChatKey(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    sendChatMessage();
+  }
+}
+
+function autoResizeChatInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function clearChatHistory() {
+  chatHistory = [];
+  var container = document.getElementById('chatbot-messages');
+  if (container) container.innerHTML = '';
+  appendMessage('ai', "Chat cleared! 🌱 I'm here whenever you're ready to talk. What's on your mind?");
+}

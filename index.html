@@ -43,10 +43,6 @@
         </blockquote>
       </div>
 
-      <div class="hero-image-wrapper">
-        <img src="C:/Users/HARISH V J/.gemini/antigravity/brain/5c006746-ddd6-4c58-b56d-4fedecfa93ff/hero_health_ai_thumbnail_1773307555606.png" alt="AI Healthcare Neural Nexus" class="hero-thumbnail" />
-        <div class="hero-image-glow"></div>
-      </div>
 
       <!-- Feature Cards -->
       <div class="feature-cards" id="features">
@@ -206,6 +202,9 @@
           <button class="dash-nav-item" data-tab="health-tips" onclick="openTab('symptom', 'health-tips', this)">
             <span class="dash-nav-icon">💡</span> Health Tips
           </button>
+          <button class="dash-nav-item" data-tab="consult-doctor" onclick="openTab('symptom', 'consult-doctor', this)">
+            <span class="dash-nav-icon">👨‍⚕️</span> Consult Doctor
+          </button>
         </nav>
         <div class="dash-sidebar-footer">
           <span class="dash-tag">🔒 Not medical advice</span>
@@ -247,6 +246,9 @@
           <button class="dash-nav-item" data-tab="meditation-guidance" onclick="openTab('depression', 'meditation-guidance', this)">
             <span class="dash-nav-icon">🧘</span> Meditation Guidance
           </button>
+          <button class="dash-nav-item" data-tab="daily-diary" onclick="openTab('depression', 'daily-diary', this)">
+            <span class="dash-nav-icon">📓</span> Daily Diary
+          </button>
         </nav>
         <div class="dash-sidebar-footer">
           <span class="dash-tag">💚 You matter</span>
@@ -261,6 +263,28 @@
           </div>
         </div>
       </main>
+
+      <!-- AI CHATBOT PANEL (Right Side) -->
+      <aside class="chatbot-panel" id="chatbot-panel">
+        <div class="chatbot-header">
+          <div class="chatbot-brand">
+            <span class="chatbot-avatar">&#129504;</span>
+            <div>
+              <div class="chatbot-name">NeuralNexus AI</div>
+              <div class="chatbot-status"><span class="chatbot-dot"></span> Online</div>
+            </div>
+          </div>
+          <button class="chatbot-clear-btn" onclick="clearChatHistory()" title="Clear chat">&#128465;</button>
+        </div>
+        <div class="chatbot-messages" id="chatbot-messages"></div>
+        <div class="chatbot-input-bar">
+          <textarea id="chatbot-input" class="chatbot-input" placeholder="Share how you're feeling..." rows="1" onkeydown="handleChatKey(event)" oninput="autoResizeChatInput(this)"></textarea>
+          <button class="chatbot-send-btn" id="chatbot-send-btn" onclick="sendChatMessage()" title="Send">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </aside>
+
     </div>
   </div>
 
