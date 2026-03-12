@@ -1,242 +1,202 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HealthAI — Early Risk Detector</title>
-<meta name="description" content="AI-powered health risk detection. Enter your symptoms and get instant disease predictions, risk levels, and actionable next steps.">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeuralNexus — AI Health Platform</title>
+  <meta name="description" content="AI-powered health risk detection. Analyze symptoms, track mental health, and get actionable insights.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- Emergency Modal -->
-<div id="emergency-modal" class="emergency-modal hidden">
-  <div class="em-overlay"></div>
-  <div class="em-box">
-    <div class="em-pulse-ring"></div>
-    <div class="em-icon">🚨</div>
-    <h2>EMERGENCY ALERT</h2>
-    <p class="em-subtitle">Your symptoms may indicate a <strong>life-threatening emergency</strong></p>
-    <div class="em-condition" id="em-condition-text"></div>
-    <div class="em-actions">
-      <a href="tel:112" class="btn-emergency">📞 Call 112 Now</a>
-      <a href="tel:108" class="btn-emergency secondary">🚑 Call 108 (Ambulance)</a>
-    </div>
-    <div class="em-tips">
-      <p>⚠️ Do NOT drive yourself. Stay calm. Sit or lie down.</p>
-      <p>📍 Share your location with the emergency operator.</p>
-    </div>
-    <button class="em-close" onclick="closeEmergency()">I understand — Continue</button>
-  </div>
-</div>
-
-<!-- Header -->
-<header class="header">
-  <div class="container">
-    <div class="logo">
-      <span class="logo-icon">🩺</span>
-      <span>HealthAI</span>
-    </div>
-    <nav>
-      <span class="nav-tag">🔒 Not medical advice</span>
+  <!-- ═══════ LANDING PAGE ═══════ -->
+  <div id="page-landing" class="page active">
+    <!-- Navbar -->
+    <nav class="landing-nav">
+      <div class="nav-brand">
+        <span class="nav-logo">🧬</span>
+        <span class="nav-name">NeuralNexus</span>
+      </div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#about">About</a>
+        <span class="nav-badge">⚡ AI Powered</span>
+      </div>
     </nav>
-  </div>
-</header>
 
-<!-- Hero -->
-<section class="hero">
-  <div class="container hero-content">
-    <div class="hero-badge">🤖 AI-Powered Health Analysis</div>
-    <h1>Detect Health Risks <br><span class="gradient-text">Before They Escalate</span></h1>
-    <p class="hero-sub">Choose a tool below to get instant AI analysis — disease predictions, risk levels, and what to do next.</p>
-    <div class="hero-stats">
-      <div class="stat"><span>15+</span><label>Conditions</label></div>
-      <div class="stat"><span>3</span><label>Risk Levels</label></div>
-      <div class="stat"><span>⚡</span><label>Instant Results</label></div>
-    </div>
-  </div>
-</section>
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-bg-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+      <div class="hero-content">
+        <div class="hero-chip">🛡️ Early Detection Saves Lives</div>
+        <h1 class="hero-title">Detect Health Risks<br><span class="gradient-text">Before They Escalate</span></h1>
+        <p class="hero-subtitle">AI-powered health analysis tools that help you understand symptoms, track mental wellness, and take proactive steps toward better health.</p>
+      </div>
 
-<!-- Feature Cards -->
-<section class="feature-cards-section">
-  <div class="container">
-    <div class="feature-cards-grid">
-
-      <!-- Card 1: Early Symptom Checker -->
-      <div class="feature-card" id="card-symptom" onclick="activateTab('symptom')">
-        <div class="fc-glow fc-glow-teal"></div>
-        <div class="fc-icon">🩺</div>
-        <div class="fc-body">
-          <h2 class="fc-title">Early Symptom Checker</h2>
-          <p class="fc-desc">Detect early disease symptoms using AI. Get risk levels, possible conditions, and next steps.</p>
+      <!-- Feature Cards -->
+      <div class="feature-cards" id="features">
+        <div class="feature-card card-symptom" onclick="navigateTo('symptom')">
+          <div class="card-glow"></div>
+          <div class="card-icon">🩺</div>
+          <h2 class="card-title">Disease Symptom Analyzer</h2>
+          <p class="card-desc">Enter your symptoms and get AI-powered predictions for possible conditions, risk levels, and recommended next steps.</p>
+          <div class="card-features">
+            <span>✓ 15+ Conditions</span>
+            <span>✓ Risk Scoring</span>
+            <span>✓ Nearby Hospitals</span>
+          </div>
+          <div class="card-action">
+            <span>Launch Analyzer</span>
+            <span class="arrow">→</span>
+          </div>
         </div>
-        <div class="fc-arrow">→</div>
-      </div>
 
-      <!-- Card 2: Depression Analysis -->
-      <div class="feature-card" id="card-depression" onclick="activateTab('depression')">
-        <div class="fc-glow fc-glow-purple"></div>
-        <div class="fc-icon">🧠</div>
-        <div class="fc-body">
-          <h2 class="fc-title">Depression Analysis</h2>
-          <p class="fc-desc">Analyze mood and mental health patterns. Identify stress signals and get personalized wellness suggestions.</p>
-        </div>
-        <div class="fc-arrow">→</div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- Main App Panels -->
-<main class="container main-app" id="main-panels">
-
-  <!-- ── Panel: Symptom Checker ─────────────────────── -->
-  <div class="panel" id="panel-symptom">
-    <div class="panel-header">
-      <button class="panel-back" onclick="closePanel()">← Back</button>
-      <span class="panel-label">🩺 Early Symptom Checker</span>
-    </div>
-
-    <!-- Symptom Input -->
-    <section class="card symptom-card">
-      <h2>🔍 Enter Your Symptoms</h2>
-      <p class="card-sub">Type a symptom and press Enter or click to add. Add all symptoms you're experiencing.</p>
-
-      <div class="input-row">
-        <div class="input-wrapper">
-          <input type="text" id="symptom-input" placeholder="e.g. fever, headache, chest pain…" autocomplete="off">
-          <div id="suggestions" class="suggestions hidden"></div>
-        </div>
-        <button class="btn-add" onclick="addSymptomFromInput()">+ Add</button>
-      </div>
-
-      <div id="symptom-tags" class="symptom-tags"></div>
-
-      <div class="quick-symptoms">
-        <span class="qs-label">Quick add:</span>
-        <div class="qs-chips" id="quick-chips"></div>
-      </div>
-
-      <button class="btn-analyze" id="analyze-btn" onclick="analyzeSymptoms()" disabled>
-        <span class="btn-icon">🤖</span> Analyze Symptoms
-      </button>
-    </section>
-
-    <!-- Results -->
-    <section id="results-section" class="results-section hidden">
-
-      <!-- Risk Level -->
-      <div id="risk-card" class="card risk-card">
-        <div class="risk-label">Overall Risk Level</div>
-        <div id="risk-badge" class="risk-badge"></div>
-        <div id="risk-desc" class="risk-desc"></div>
-        <div id="risk-meter" class="risk-meter"><div id="risk-fill" class="risk-fill"></div></div>
-      </div>
-
-      <!-- Conditions -->
-      <div class="card">
-        <h3>🩺 Possible Conditions</h3>
-        <p class="card-sub">Based on your symptoms — not a diagnosis.</p>
-        <div id="conditions-list" class="conditions-list"></div>
-      </div>
-
-      <!-- Recommendations -->
-      <div class="card">
-        <h3>📋 What To Do Next</h3>
-        <div id="recommendations-list" class="recommendations-list"></div>
-      </div>
-
-      <!-- Hospitals -->
-      <div class="card">
-        <h3>🏥 Nearby Hospitals</h3>
-        <p class="card-sub">Based on your area — click for directions.</p>
-        <div class="hospitals-grid" id="hospitals-grid"></div>
-      </div>
-
-      <div class="disclaimer-card">
-        ⚕️ <strong>Disclaimer:</strong> This tool is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified doctor.
-      </div>
-    </section>
-  </div>
-
-  <!-- ── Panel: Depression Analysis ────────────────── -->
-  <div class="panel" id="panel-depression">
-    <div class="panel-header">
-      <button class="panel-back" onclick="closePanel()">← Back</button>
-      <span class="panel-label">🧠 Depression Analysis</span>
-    </div>
-
-    <!-- Mood Questionnaire -->
-    <section class="card">
-      <h2>💬 Mood Questionnaire</h2>
-      <p class="card-sub">Answer honestly — your responses are never stored. This is not a clinical diagnosis.</p>
-
-      <div class="mood-questions" id="mood-questions">
-        <!-- Rendered by JS -->
-      </div>
-    </section>
-
-    <!-- Stress Level -->
-    <section class="card">
-      <h2>📊 Stress Level</h2>
-      <p class="card-sub">How stressed have you felt over the past two weeks?</p>
-
-      <div class="stress-slider-wrap">
-        <input type="range" id="stress-slider" min="1" max="10" value="5" class="stress-slider" oninput="updateStressLabel(this.value)">
-        <div class="stress-labels">
-          <span>😌 Calm</span>
-          <span id="stress-value-label" class="stress-current">5 / 10</span>
-          <span>😰 Very Stressed</span>
+        <div class="feature-card card-depression" onclick="navigateTo('depression')">
+          <div class="card-glow"></div>
+          <div class="card-icon">🧠</div>
+          <h2 class="card-title">Depression Analyzer &amp; Solver</h2>
+          <p class="card-desc">Take a guided mental health assessment, track your mood over time, and receive AI-driven advice and meditation techniques.</p>
+          <div class="card-features">
+            <span>✓ Depression Test</span>
+            <span>✓ Mood Tracker</span>
+            <span>✓ AI Guidance</span>
+          </div>
+          <div class="card-action">
+            <span>Start Assessment</span>
+            <span class="arrow">→</span>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- Sleep Quality -->
-    <section class="card">
-      <h2>😴 Sleep Quality</h2>
-      <p class="card-sub">On average, how many hours of sleep do you get per night?</p>
-      <div class="sleep-options" id="sleep-options">
-        <button class="sleep-btn" data-val="less4" onclick="selectSleep(this)">Less than 4h</button>
-        <button class="sleep-btn" data-val="4to6" onclick="selectSleep(this)">4 – 6 hours</button>
-        <button class="sleep-btn" data-val="6to8" onclick="selectSleep(this)">6 – 8 hours</button>
-        <button class="sleep-btn" data-val="more8" onclick="selectSleep(this)">More than 8h</button>
+    <!-- About Section -->
+    <section class="about-section" id="about">
+      <div class="about-grid">
+        <div class="about-item">
+          <div class="about-icon">🔒</div>
+          <h3>Private & Secure</h3>
+          <p>Your data stays on your device. No accounts, no cloud storage.</p>
+        </div>
+        <div class="about-item">
+          <div class="about-icon">⚡</div>
+          <h3>Instant Results</h3>
+          <p>Get immediate analysis powered by advanced pattern matching.</p>
+        </div>
+        <div class="about-item">
+          <div class="about-icon">🎯</div>
+          <h3>Actionable Advice</h3>
+          <p>Clear next steps and recommendations for every analysis.</p>
+        </div>
       </div>
-    </section>
-
-    <button class="btn-analyze btn-analyze-purple" id="depress-btn" onclick="analyzeDepression()">
-      <span class="btn-icon">🧠</span> Analyze Mental Health
-    </button>
-
-    <!-- Mental Health Results -->
-    <section id="depression-results" class="results-section hidden">
-      <div class="card risk-card" id="mental-risk-card">
-        <div class="risk-label">Mental Wellness Score</div>
-        <div id="mental-badge" class="risk-badge"></div>
-        <div id="mental-desc" class="risk-desc"></div>
-        <div class="risk-meter"><div id="mental-fill" class="risk-fill"></div></div>
-      </div>
-
-      <div class="card">
-        <h3>💡 Mental Health Suggestions</h3>
-        <div id="mental-suggestions" class="recommendations-list"></div>
-      </div>
-
-      <div class="disclaimer-card">
-        ⚕️ <strong>Disclaimer:</strong> This analysis is for informational purposes only. Please consult a licensed mental health professional for a clinical assessment.
+      <div class="about-disclaimer">
+        ⚕️ <strong>Disclaimer:</strong> NeuralNexus is not a substitute for professional medical advice, diagnosis, or treatment.
       </div>
     </section>
   </div>
 
-</main>
-
-<footer class="footer">
-  <div class="container">
-    <p>🩺 HealthAI · Built for early risk detection · <strong>Not a substitute for a doctor</strong></p>
+  <!-- ═══════ SYMPTOM ANALYZER PAGE ═══════ -->
+  <div id="page-symptom" class="page">
+    <div class="dashboard">
+      <aside class="dash-sidebar">
+        <div class="dash-sidebar-header">
+          <span class="back-btn" onclick="navigateTo('landing')">← Back</span>
+          <div class="dash-brand">
+            <span>🩺</span>
+            <span>Symptom Analyzer</span>
+          </div>
+        </div>
+        <nav class="dash-nav">
+          <button class="dash-nav-item active" data-tab="disease-detection" onclick="openTab('symptom', 'disease-detection', this)">
+            <span class="dash-nav-icon">🔍</span> Disease Detection
+          </button>
+          <button class="dash-nav-item" data-tab="nearby-hospitals" onclick="openTab('symptom', 'nearby-hospitals', this)">
+            <span class="dash-nav-icon">🏥</span> Nearby Hospitals
+          </button>
+          <button class="dash-nav-item" data-tab="nearby-pharmacy" onclick="openTab('symptom', 'nearby-pharmacy', this)">
+            <span class="dash-nav-icon">💊</span> Nearby Pharmacy
+          </button>
+          <button class="dash-nav-item" data-tab="health-tips" onclick="openTab('symptom', 'health-tips', this)">
+            <span class="dash-nav-icon">💡</span> Health Tips
+          </button>
+        </nav>
+        <div class="dash-sidebar-footer">
+          <span class="dash-tag">🔒 Not medical advice</span>
+        </div>
+      </aside>
+      <main class="dash-main">
+        <div class="workspace" id="workspace-symptom">
+          <div class="workspace-empty">
+            <div class="empty-icon">🩺</div>
+            <h3>Select a tool from the sidebar</h3>
+            <p>Click any option to open it as a floating window</p>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
-</footer>
 
-<script src="app.js"></script>
+  <!-- ═══════ DEPRESSION ANALYZER PAGE ═══════ -->
+  <div id="page-depression" class="page">
+    <div class="dashboard">
+      <aside class="dash-sidebar">
+        <div class="dash-sidebar-header">
+          <span class="back-btn" onclick="navigateTo('landing')">← Back</span>
+          <div class="dash-brand">
+            <span>🧠</span>
+            <span>Depression Analyzer</span>
+          </div>
+        </div>
+        <nav class="dash-nav">
+          <button class="dash-nav-item active" data-tab="depression-test" onclick="openTab('depression', 'depression-test', this)">
+            <span class="dash-nav-icon">📋</span> Depression Test
+          </button>
+          <button class="dash-nav-item" data-tab="mood-tracker" onclick="openTab('depression', 'mood-tracker', this)">
+            <span class="dash-nav-icon">📊</span> Mood Tracker
+          </button>
+          <button class="dash-nav-item" data-tab="ai-advice" onclick="openTab('depression', 'ai-advice', this)">
+            <span class="dash-nav-icon">🤖</span> AI Advice
+          </button>
+          <button class="dash-nav-item" data-tab="meditation-guidance" onclick="openTab('depression', 'meditation-guidance', this)">
+            <span class="dash-nav-icon">🧘</span> Meditation Guidance
+          </button>
+        </nav>
+        <div class="dash-sidebar-footer">
+          <span class="dash-tag">💚 You matter</span>
+        </div>
+      </aside>
+      <main class="dash-main">
+        <div class="workspace" id="workspace-depression">
+          <div class="workspace-empty">
+            <div class="empty-icon">🧠</div>
+            <h3>Select a tool from the sidebar</h3>
+            <p>Click any option to open it as a floating window</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Emergency Modal -->
+  <div id="emergency-modal" class="emergency-modal hidden">
+    <div class="em-overlay" onclick="closeEmergency()"></div>
+    <div class="em-box">
+      <div class="em-icon">🚨</div>
+      <h2>EMERGENCY ALERT</h2>
+      <p class="em-subtitle">Your symptoms may indicate a <strong>life-threatening emergency</strong></p>
+      <div class="em-condition" id="em-condition-text"></div>
+      <div class="em-actions">
+        <a href="tel:112" class="btn-emergency">📞 Call 112 Now</a>
+        <a href="tel:108" class="btn-emergency secondary">🚑 Call 108 (Ambulance)</a>
+      </div>
+      <button class="em-close" onclick="closeEmergency()">I understand — Continue</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>

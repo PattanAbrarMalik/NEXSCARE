@@ -1,638 +1,866 @@
-/* ============================================================
-   HealthAI — AI Engine & App Logic
+﻿/* ============================================================
+   NeuralNexus - Healthcare App Logic
+   Page Navigation, Tab System, Feature Content
    ============================================================ */
 
-// ── KNOWLEDGE BASE ──────────────────────────────────────────
+// ── PAGE NAVIGATION ──────────────────────────────────────────
+function navigateTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + page);
+  if (target) {
+    target.classList.add('active');
+    window.scrollTo(0, 0);
+  }
+}
+
+// ── TAB SYSTEM (macOS-style Floating Panels) ─────────────────
+const tabState = {
+  symptom: { tabs: [], activeTab: null },
+  depression: { tabs: [], activeTab: null }
+};
+
+const TAB_TITLES = {
+  'disease-detection': '🔍 Disease Detection',
+  'nearby-hospitals': '🏥 Nearby Hospitals',
+  'nearby-pharmacy': '💊 Nearby Pharmacy',
+  'health-tips': '💡 Health Tips',
+  'depression-test': '📋 Depression Test',
+  'mood-tracker': '📊 Mood Tracker',
+  'ai-advice': '🤖 AI Advice',
+  'meditation-guidance': '🧘 Meditation Guidance'
+};
+
+let panelZIndex = 100;
+const panelPositions = {};
+
+function openTab(section, tabId, navBtn) {
+  var state = tabState[section];
+
+  // If already open, bring to front
+  if (state.tabs.includes(tabId)) {
+    var existing = document.getElementById('panel-' + tabId);
+    if (existing) {
+      // Restore if minimized
+      if (existing.classList.contains('minimized')) {
+        existing.classList.remove('minimized');
+        renderDock(section);
+      }
+      bringToFront(section, tabId);
+    }
+    return;
+  }
+
+  // Add to state
+  state.tabs.push(tabId);
+  state.activeTab = tabId;
+
+  // Hide empty state
+  var workspace = document.getElementById('workspace-' + section);
+  var empty = workspace.querySelector('.workspace-empty');
+  if (empty) empty.style.display = 'none';
+
+  // Create floating panel
+  createFloatingPanel(section, tabId);
+
+  // Update sidebar
+  updateSidebarActive(section, tabId);
+}
+
+function createFloatingPanel(section, tabId) {
+  var workspace = document.getElementById('workspace-' + section);
+  var title = TAB_TITLES[tabId] || tabId;
+
+  // Calculate cascade position
+  var offset = (tabState[section].tabs.length - 1) * 30;
+  var startX = 30 + (offset % 200);
+  var startY = 20 + (offset % 150);
+
+  var panel = document.createElement('div');
+  panel.id = 'panel-' + tabId;
+  panel.className = 'floating-panel focused';
+  panel.dataset.section = section;
+  panel.dataset.tabId = tabId;
+  panel.style.left = startX + 'px';
+  panel.style.top = startY + 'px';
+  panel.style.zIndex = ++panelZIndex;
+
+  panel.innerHTML =
+    '<div class="panel-titlebar" data-panel="' + tabId + '">' +
+      '<div class="panel-dots">' +
+        '<button class="panel-dot dot-close" onclick="closeTab(\'' + section + '\',\'' + tabId + '\',event)" title="Close"></button>' +
+        '<button class="panel-dot dot-minimize" onclick="minimizePanel(\'' + section + '\',\'' + tabId + '\')" title="Minimize"></button>' +
+        '<button class="panel-dot dot-maximize" onclick="maximizePanel(\'' + section + '\',\'' + tabId + '\')" title="Maximize"></button>' +
+      '</div>' +
+      '<span class="panel-title">' + escapeHtml(title) + '</span>' +
+    '</div>' +
+    '<div class="panel-body">' + getTabContent(tabId) + '</div>' +
+    '<div class="panel-resize" data-panel="' + tabId + '"></div>';
+
+  workspace.appendChild(panel);
+
+  // Unfocus all others
+  unfocusAllPanels(section);
+  panel.classList.add('focused');
+
+  // Init drag
+  initPanelDrag(panel, section, tabId);
+  initPanelResize(panel);
+
+  // Init feature (e.g., symptom input)
+  initTabFeature(tabId);
+}
+
+function bringToFront(section, tabId) {
+  var workspace = document.getElementById('workspace-' + section);
+  var panels = workspace.querySelectorAll('.floating-panel');
+  panels.forEach(function(p) { p.classList.remove('focused'); });
+  var panel = document.getElementById('panel-' + tabId);
+  if (panel) {
+    panel.style.zIndex = ++panelZIndex;
+    panel.classList.add('focused');
+  }
+  tabState[section].activeTab = tabId;
+  updateSidebarActive(section, tabId);
+}
+
+function unfocusAllPanels(section) {
+  var workspace = document.getElementById('workspace-' + section);
+  workspace.querySelectorAll('.floating-panel').forEach(function(p) {
+    p.classList.remove('focused');
+  });
+}
+
+function closeTab(section, tabId, e) {
+  if (e) e.stopPropagation();
+  var state = tabState[section];
+  var idx = state.tabs.indexOf(tabId);
+  if (idx === -1) return;
+
+  state.tabs.splice(idx, 1);
+
+  // Remove panel
+  var panel = document.getElementById('panel-' + tabId);
+  if (panel) {
+    panel.style.transform = 'scale(0.9)';
+    panel.style.opacity = '0';
+    setTimeout(function() { panel.remove(); }, 150);
+  }
+
+  // Activate next panel or show empty
+  if (state.activeTab === tabId) {
+    if (state.tabs.length > 0) {
+      var newIdx = Math.min(idx, state.tabs.length - 1);
+      bringToFront(section, state.tabs[newIdx]);
+    } else {
+      state.activeTab = null;
+      showEmptyState(section);
+    }
+  }
+
+  renderDock(section);
+}
+
+function minimizePanel(section, tabId) {
+  var panel = document.getElementById('panel-' + tabId);
+  if (!panel) return;
+  panel.classList.add('minimized');
+
+  // Activate another visible panel
+  var state = tabState[section];
+  if (state.activeTab === tabId) {
+    var visible = state.tabs.filter(function(t) {
+      var p = document.getElementById('panel-' + t);
+      return p && !p.classList.contains('minimized');
+    });
+    if (visible.length > 0) {
+      bringToFront(section, visible[visible.length - 1]);
+    } else {
+      state.activeTab = null;
+    }
+  }
+
+  renderDock(section);
+}
+
+function maximizePanel(section, tabId) {
+  var panel = document.getElementById('panel-' + tabId);
+  if (!panel) return;
+
+  if (panel.classList.contains('maximized')) {
+    panel.classList.remove('maximized');
+    // Restore saved position
+    var saved = panelPositions[tabId];
+    if (saved) {
+      panel.style.left = saved.left;
+      panel.style.top = saved.top;
+      panel.style.width = saved.width;
+      panel.style.height = saved.height || '';
+    }
+  } else {
+    // Save current position
+    panelPositions[tabId] = {
+      left: panel.style.left,
+      top: panel.style.top,
+      width: panel.style.width,
+      height: panel.style.height
+    };
+    panel.classList.add('maximized');
+  }
+  bringToFront(section, tabId);
+}
+
+function showEmptyState(section) {
+  var workspace = document.getElementById('workspace-' + section);
+  var empty = workspace.querySelector('.workspace-empty');
+  if (empty) empty.style.display = '';
+}
+
+function renderDock(section) {
+  var workspace = document.getElementById('workspace-' + section);
+  // Remove existing dock
+  var existingDock = workspace.querySelector('.minimized-dock');
+  if (existingDock) existingDock.remove();
+
+  var minimized = tabState[section].tabs.filter(function(t) {
+    var p = document.getElementById('panel-' + t);
+    return p && p.classList.contains('minimized');
+  });
+
+  if (minimized.length === 0) return;
+
+  var dock = document.createElement('div');
+  dock.className = 'minimized-dock';
+  minimized.forEach(function(tabId) {
+    var title = TAB_TITLES[tabId] || tabId;
+    var item = document.createElement('div');
+    item.className = 'dock-item';
+    item.textContent = title;
+    item.onclick = function() {
+      var panel = document.getElementById('panel-' + tabId);
+      if (panel) {
+        panel.classList.remove('minimized');
+        bringToFront(section, tabId);
+        renderDock(section);
+      }
+    };
+    dock.appendChild(item);
+  });
+  workspace.appendChild(dock);
+}
+
+function updateSidebarActive(section, tabId) {
+  var sidebar = document.getElementById('page-' + section);
+  if (!sidebar) return;
+  sidebar.querySelectorAll('.dash-nav-item').forEach(function(b) { b.classList.remove('active'); });
+  var activeBtn = sidebar.querySelector('[data-tab="' + tabId + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
+}
+
+// ── DRAG SYSTEM ──────────────────────────────────────────────
+function initPanelDrag(panel, section, tabId) {
+  var titlebar = panel.querySelector('.panel-titlebar');
+  var isDragging = false;
+  var startX, startY, origX, origY;
+
+  function onMouseDown(e) {
+    if (e.target.closest('.panel-dots')) return;
+    e.preventDefault();
+    bringToFront(section, tabId);
+    if (panel.classList.contains('maximized')) return;
+
+    isDragging = true;
+    panel.classList.add('dragging');
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    startX = clientX;
+    startY = clientY;
+    origX = panel.offsetLeft;
+    origY = panel.offsetTop;
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('touchmove', onMouseMove, { passive: false });
+    document.addEventListener('touchend', onMouseUp);
+  }
+
+  function onMouseMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    var dx = clientX - startX;
+    var dy = clientY - startY;
+    panel.style.left = Math.max(0, origX + dx) + 'px';
+    panel.style.top = Math.max(0, origY + dy) + 'px';
+  }
+
+  function onMouseUp() {
+    isDragging = false;
+    panel.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('touchmove', onMouseMove);
+    document.removeEventListener('touchend', onMouseUp);
+  }
+
+  titlebar.addEventListener('mousedown', onMouseDown);
+  titlebar.addEventListener('touchstart', onMouseDown, { passive: false });
+
+  // Click anywhere on panel to bring to front
+  panel.addEventListener('mousedown', function() {
+    bringToFront(section, tabId);
+  });
+}
+
+function initPanelResize(panel) {
+  var handle = panel.querySelector('.panel-resize');
+  if (!handle) return;
+  var isResizing = false;
+  var startX, startY, startW, startH;
+
+  function onMouseDown(e) {
+    if (panel.classList.contains('maximized')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    startX = clientX;
+    startY = clientY;
+    startW = panel.offsetWidth;
+    startH = panel.offsetHeight;
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('touchmove', onMouseMove, { passive: false });
+    document.addEventListener('touchend', onMouseUp);
+  }
+
+  function onMouseMove(e) {
+    if (!isResizing) return;
+    e.preventDefault();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    var newW = Math.max(340, startW + (clientX - startX));
+    var newH = Math.max(200, startH + (clientY - startY));
+    panel.style.width = newW + 'px';
+    panel.style.height = newH + 'px';
+  }
+
+  function onMouseUp() {
+    isResizing = false;
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('touchmove', onMouseMove);
+    document.removeEventListener('touchend', onMouseUp);
+  }
+
+  handle.addEventListener('mousedown', onMouseDown);
+  handle.addEventListener('touchstart', onMouseDown, { passive: false });
+}
+
+// Remove old functions that are no longer needed
+function activateTab(section, tabId) { bringToFront(section, tabId); }
+function renderTabBar() {}
+function renderEmptyState(section) { showEmptyState(section); }
+
+// ── TAB CONTENT GENERATORS ──────────────────────────────────
+
+function getTabContent(tabId) {
+  switch (tabId) {
+    case 'disease-detection': return getDiseaseDetectionHTML();
+    case 'nearby-hospitals': return getNearbyHospitalsHTML();
+    case 'nearby-pharmacy': return getNearbyPharmacyHTML();
+    case 'health-tips': return getHealthTipsHTML();
+    case 'depression-test': return getDepressionTestHTML();
+    case 'mood-tracker': return getMoodTrackerHTML();
+    case 'ai-advice': return getAIAdviceHTML();
+    case 'meditation-guidance': return getMeditationGuidanceHTML();
+    default: return '<p>Content not available</p>';
+  }
+}
+
+function escapeHtml(text) {
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ── DISEASE DETECTION ────────────────────────────────────────
 const DISEASES = [
-  {
-    id: 'flu', name: 'Influenza (Flu)', icon: '🤧',
-    symptoms: ['fever','chills','muscle ache','fatigue','cough','sore throat','headache','runny nose','body pain'],
-    risk: 'medium',
-    desc: 'A contagious respiratory illness caused by influenza viruses.',
-    recommendations: [
-      { icon: '🛌', text: '<strong>Rest at home</strong> and avoid contact with others to prevent spreading.' },
-      { icon: '💧', text: '<strong>Stay hydrated</strong> — drink water, herbal teas, and warm broths.' },
-      { icon: '💊', text: '<strong>Take fever reducers</strong> like paracetamol if temperature is high.' },
-      { icon: '👨‍⚕️', text: '<strong>See a doctor</strong> if symptoms worsen or last more than 7 days.' }
-    ]
-  },
-  {
-    id: 'covid', name: 'COVID-19', icon: '🦠',
-    symptoms: ['fever','cough','shortness of breath','fatigue','loss of taste','loss of smell','sore throat','headache','body pain','chills'],
-    risk: 'high',
-    desc: 'Infectious disease caused by the SARS-CoV-2 coronavirus.',
-    recommendations: [
-      { icon: '🏠', text: '<strong>Isolate immediately</strong> — stay home and away from others.' },
-      { icon: '🧪', text: '<strong>Get tested</strong> for COVID-19 at your nearest testing center.' },
-      { icon: '😷', text: '<strong>Wear a mask</strong> if you must go outside or be around others.' },
-      { icon: '👨‍⚕️', text: '<strong>Contact your doctor</strong> about treatment options like antivirals.' }
-    ]
-  },
-  {
-    id: 'heart_attack', name: 'Heart Attack', icon: '❤️‍🔥',
-    symptoms: ['chest pain','chest tightness','left arm pain','jaw pain','shortness of breath','sweating','nausea','dizziness','back pain'],
-    risk: 'high',
-    desc: 'Occurs when blood flow to part of the heart is blocked.',
-    recommendations: [
-      { icon: '🚨', text: '<strong>Call emergency services immediately (112/108)</strong> — this is life-threatening.' },
-      { icon: '🛑', text: '<strong>Stop all activity</strong> and sit or lie down in a comfortable position.' },
-      { icon: '💊', text: '<strong>Chew aspirin (325mg)</strong> if available and not allergic.' },
-      { icon: '🤝', text: '<strong>Do NOT drive yourself</strong> — wait for the ambulance.' }
-    ]
-  },
-  {
-    id: 'stroke', name: 'Stroke', icon: '🧠',
-    symptoms: ['sudden numbness','slurred speech','face drooping','sudden confusion','severe headache','vision problems','loss of balance','sudden weakness'],
-    risk: 'high',
-    desc: 'Occurs when blood supply to part of the brain is cut off.',
-    recommendations: [
-      { icon: '🚨', text: '<strong>Call 112/108 immediately</strong> — every minute matters for stroke.' },
-      { icon: '🛑', text: '<strong>Do NOT give food or water</strong> — they may have difficulty swallowing.' },
-      { icon: '📝', text: '<strong>Note the time</strong> symptoms started — critical for treatment decisions.' },
-      { icon: '🤝', text: '<strong>Stay with the person</strong> and keep them calm until help arrives.' }
-    ]
-  },
-  {
-    id: 'hypertension', name: 'Hypertension (High BP)', icon: '🩸',
-    symptoms: ['headache','dizziness','blurred vision','chest pain','shortness of breath','nausea','nosebleed','fatigue'],
-    risk: 'medium',
-    desc: 'A condition where blood pressure in the arteries is persistently elevated.',
-    recommendations: [
-      { icon: '🥗', text: '<strong>Reduce salt intake</strong> — follow a DASH diet with fruits and vegetables.' },
-      { icon: '🏃', text: '<strong>Exercise regularly</strong> — 30 minutes of moderate activity most days.' },
-      { icon: '👨‍⚕️', text: '<strong>Visit a doctor</strong> to check your blood pressure and get medication if needed.' },
-      { icon: '🧘', text: '<strong>Manage stress</strong> through meditation, yoga, or breathing exercises.' }
-    ]
-  },
-  {
-    id: 'diabetes', name: 'Diabetes', icon: '🍬',
-    symptoms: ['frequent urination','excessive thirst','fatigue','blurred vision','slow healing wounds','numbness','weight loss','hunger','dizziness'],
-    risk: 'medium',
-    desc: 'A disease that affects how your body uses blood glucose.',
-    recommendations: [
-      { icon: '🩸', text: '<strong>Check blood sugar levels</strong> at a clinic or with a home glucometer.' },
-      { icon: '🥗', text: '<strong>Avoid sugar and refined carbs</strong> — eat fiber-rich, low-GI foods.' },
-      { icon: '👨‍⚕️', text: '<strong>See an endocrinologist</strong> for proper diagnosis and medication management.' },
-      { icon: '🏃', text: '<strong>Exercise daily</strong> to improve insulin sensitivity.' }
-    ]
-  },
-  {
-    id: 'pneumonia', name: 'Pneumonia', icon: '🫁',
-    symptoms: ['cough','fever','shortness of breath','chest pain','fatigue','chills','sweating','confusion','rapid breathing'],
-    risk: 'high',
-    desc: 'Infection that inflames air sacs in one or both lungs.',
-    recommendations: [
-      { icon: '👨‍⚕️', text: '<strong>See a doctor immediately</strong> for diagnosis (chest X-ray needed).' },
-      { icon: '💊', text: '<strong>Complete antibiotics course</strong> if prescribed — do not stop early.' },
-      { icon: '🛌', text: '<strong>Rest and stay warm</strong> — your body needs energy to fight infection.' },
-      { icon: '💧', text: '<strong>Drink plenty of fluids</strong> to loosen mucus and stay hydrated.' }
-    ]
-  },
-  {
-    id: 'migraine', name: 'Migraine', icon: '😖',
-    symptoms: ['severe headache','nausea','vomiting','light sensitivity','sound sensitivity','visual aura','dizziness','fatigue'],
-    risk: 'low',
-    desc: 'Recurring type of headache that causes moderate to severe pain.',
-    recommendations: [
-      { icon: '🌑', text: '<strong>Rest in a dark, quiet room</strong> away from light and noise triggers.' },
-      { icon: '💊', text: '<strong>Take pain relief early</strong> — ibuprofen or sumatriptan at onset.' },
-      { icon: '💧', text: '<strong>Stay hydrated</strong> — dehydration is a common migraine trigger.' },
-      { icon: '📔', text: '<strong>Keep a migraine diary</strong> to identify and avoid personal triggers.' }
-    ]
-  },
-  {
-    id: 'anemia', name: 'Anemia', icon: '🩸',
-    symptoms: ['fatigue','weakness','pale skin','dizziness','shortness of breath','cold hands','cold feet','headache','irregular heartbeat'],
-    risk: 'medium',
-    desc: 'A condition where you lack enough red blood cells to carry oxygen.',
-    recommendations: [
-      { icon: '🥩', text: '<strong>Eat iron-rich foods</strong> — red meat, spinach, lentils, and beans.' },
-      { icon: '🧪', text: '<strong>Get a blood test (CBC)</strong> to confirm anemia type and severity.' },
-      { icon: '💊', text: '<strong>Take iron supplements</strong> as prescribed by your doctor.' },
-      { icon: '🍊', text: '<strong>Consume Vitamin C</strong> with meals to improve iron absorption.' }
-    ]
-  },
-  {
-    id: 'dengue', name: 'Dengue Fever', icon: '🦟',
-    symptoms: ['high fever','severe headache','eye pain','joint pain','muscle pain','rash','nausea','vomiting','fatigue'],
-    risk: 'high',
-    desc: 'A mosquito-borne viral infection causing severe flu-like illness.',
-    recommendations: [
-      { icon: '👨‍⚕️', text: '<strong>See a doctor immediately</strong> for blood test (platelet count check).' },
-      { icon: '💊', text: '<strong>Only take paracetamol</strong> — avoid NSAIDs like aspirin/ibuprofen.' },
-      { icon: '💧', text: '<strong>Drink lots of fluids</strong> — dengue causes dangerous dehydration.' },
-      { icon: '🦟', text: '<strong>Use mosquito repellent</strong> and sleep under nets to prevent spreading.' }
-    ]
-  },
-  {
-    id: 'asthma', name: 'Asthma Attack', icon: '💨',
-    symptoms: ['shortness of breath','wheezing','coughing','chest tightness','rapid breathing','anxiety','difficulty speaking'],
-    risk: 'high',
-    desc: 'A condition where airways become inflamed and narrow, causing breathing difficulty.',
-    recommendations: [
-      { icon: '💨', text: '<strong>Use your rescue inhaler</strong> (salbutamol) immediately.' },
-      { icon: '🧘', text: '<strong>Sit upright</strong> and practice controlled breathing — slow inhale, slow exhale.' },
-      { icon: '🚨', text: '<strong>Call 112 if no improvement</strong> in 15 minutes after inhaler use.' },
-      { icon: '🚫', text: '<strong>Remove triggers</strong> — allergens, smoke, cold air, or strong smells.' }
-    ]
-  },
-  {
-    id: 'uti', name: 'Urinary Tract Infection', icon: '🚽',
-    symptoms: ['frequent urination','burning urination','cloudy urine','strong smelling urine','pelvic pain','blood in urine','fatigue','fever'],
-    risk: 'medium',
-    desc: 'An infection in any part of your urinary system.',
-    recommendations: [
-      { icon: '💧', text: '<strong>Drink 8+ glasses of water</strong> daily to flush bacteria.' },
-      { icon: '👨‍⚕️', text: '<strong>See a doctor</strong> for urine culture and antibiotics prescription.' },
-      { icon: '🧴', text: '<strong>Avoid irritants</strong> — caffeine, alcohol, and citrus drinks temporarily.' },
-      { icon: '🍒', text: '<strong>Drink cranberry juice</strong> (unsweetened) to help prevent bacterial adhesion.' }
-    ]
-  },
-  {
-    id: 'malaria', name: 'Malaria', icon: '🦟',
-    symptoms: ['high fever','chills','sweating','headache','nausea','vomiting','muscle pain','fatigue','diarrhea'],
-    risk: 'high',
-    desc: 'A life-threatening disease spread through infected mosquito bites.',
-    recommendations: [
-      { icon: '🧪', text: '<strong>Get a malaria blood test (RDT)</strong> immediately — do not delay.' },
-      { icon: '👨‍⚕️', text: '<strong>Seek medical care urgently</strong> — antimalarial drugs must be prescribed.' },
-      { icon: '💊', text: '<strong>Do not self-medicate</strong> — treatment depends on the malaria species.' },
-      { icon: '🛌', text: '<strong>Rest and hydrate</strong> — fever and sweating cause significant fluid loss.' }
-    ]
-  },
-  {
-    id: 'appendicitis', name: 'Appendicitis', icon: '⚠️',
-    symptoms: ['abdominal pain','nausea','vomiting','fever','loss of appetite','abdominal swelling','diarrhea','painful urination'],
-    risk: 'high',
-    desc: 'Inflammation of the appendix — a medical emergency if untreated.',
-    recommendations: [
-      { icon: '🚨', text: '<strong>Go to the ER immediately</strong> — appendicitis can be life-threatening if it ruptures.' },
-      { icon: '🚫', text: '<strong>Do not eat or drink</strong> anything until evaluated by a doctor.' },
-      { icon: '🚫', text: '<strong>Do not take laxatives or antacids</strong> — this can worsen the condition.' },
-      { icon: '🏥', text: '<strong>Surgery (appendectomy)</strong> is often required — do not delay treatment.' }
-    ]
-  },
-  {
-    id: 'anxiety', name: 'Anxiety Disorder', icon: '😰',
-    symptoms: ['rapid heartbeat','sweating','trembling','shortness of breath','dizziness','nausea','chest pain','fatigue','sleep problems','difficulty concentrating'],
-    risk: 'low',
-    desc: 'A mental health condition characterized by persistent worry or fear.',
-    recommendations: [
-      { icon: '🧘', text: '<strong>Practice deep breathing</strong> — inhale 4 counts, hold 4, exhale 6 counts.' },
-      { icon: '👨‍⚕️', text: '<strong>See a mental health professional</strong> — therapy (CBT) is very effective.' },
-      { icon: '🏃', text: '<strong>Exercise regularly</strong> — physical activity reduces anxiety hormones.' },
-      { icon: '📵', text: '<strong>Limit caffeine and social media</strong> — both can amplify anxiety symptoms.' }
-    ]
-  }
+  { id:'flu', name:'Influenza (Flu)', icon:'🤧', symptoms:['fever','chills','muscle ache','fatigue','cough','sore throat','headache','runny nose','body pain'], risk:'medium', desc:'A contagious respiratory illness caused by influenza viruses.', recs:[{i:'🛌',t:'<strong>Rest at home</strong> and avoid contact.'},{i:'💧',t:'<strong>Stay hydrated</strong> with water and warm fluids.'},{i:'💊',t:'<strong>Take fever reducers</strong> like paracetamol.'},{i:'👨‍⚕️',t:'<strong>See a doctor</strong> if symptoms worsen.'}]},
+  { id:'covid', name:'COVID-19', icon:'🦠', symptoms:['fever','cough','shortness of breath','fatigue','loss of taste','loss of smell','sore throat','headache','body pain','chills'], risk:'high', desc:'Caused by the SARS-CoV-2 coronavirus.', recs:[{i:'🏠',t:'<strong>Isolate immediately</strong>.'},{i:'🧪',t:'<strong>Get tested</strong> for COVID-19.'},{i:'😷',t:'<strong>Wear a mask</strong> around others.'},{i:'👨‍⚕️',t:'<strong>Contact your doctor</strong>.'}]},
+  { id:'heart_attack', name:'Heart Attack', icon:'❤️‍🔥', symptoms:['chest pain','chest tightness','left arm pain','jaw pain','shortness of breath','sweating','nausea','dizziness','back pain'], risk:'high', desc:'Occurs when blood flow to part of the heart is blocked.', recs:[{i:'🚨',t:'<strong>Call emergency services (112/108)</strong>.'},{i:'🛑',t:'<strong>Stop all activity</strong>, sit/lie down.'},{i:'💊',t:'<strong>Chew aspirin (325mg)</strong> if not allergic.'},{i:'🤝',t:'<strong>Do NOT drive yourself</strong>.'}]},
+  { id:'stroke', name:'Stroke', icon:'🧠', symptoms:['sudden numbness','slurred speech','face drooping','sudden confusion','severe headache','vision problems','loss of balance','sudden weakness'], risk:'high', desc:'Blood supply to part of the brain is cut off.', recs:[{i:'🚨',t:'<strong>Call 112/108 immediately</strong>.'},{i:'🛑',t:'<strong>Do NOT give food/water</strong>.'},{i:'📝',t:'<strong>Note the time</strong> symptoms started.'},{i:'🤝',t:'<strong>Stay with the person</strong>.'}]},
+  { id:'hypertension', name:'Hypertension', icon:'🩸', symptoms:['headache','dizziness','blurred vision','chest pain','shortness of breath','nausea','nosebleed','fatigue'], risk:'medium', desc:'Persistently elevated blood pressure.', recs:[{i:'🥗',t:'<strong>Reduce salt</strong>, eat fruits/vegetables.'},{i:'🏃',t:'<strong>Exercise regularly</strong> (30 min/day).'},{i:'👨‍⚕️',t:'<strong>Visit a doctor</strong> for medication.'},{i:'🧘',t:'<strong>Manage stress</strong> with meditation.'}]},
+  { id:'diabetes', name:'Diabetes', icon:'🍬', symptoms:['frequent urination','excessive thirst','fatigue','blurred vision','slow healing wounds','numbness','weight loss','hunger','dizziness'], risk:'medium', desc:'Affects how your body uses blood glucose.', recs:[{i:'🩸',t:'<strong>Check blood sugar levels</strong>.'},{i:'🥗',t:'<strong>Avoid sugar/refined carbs</strong>.'},{i:'👨‍⚕️',t:'<strong>See an endocrinologist</strong>.'},{i:'🏃',t:'<strong>Exercise daily</strong>.'}]},
+  { id:'pneumonia', name:'Pneumonia', icon:'🫁', symptoms:['cough','fever','shortness of breath','chest pain','fatigue','chills','sweating','confusion','rapid breathing'], risk:'high', desc:'Infection inflaming air sacs in lungs.', recs:[{i:'👨‍⚕️',t:'<strong>See a doctor immediately</strong>.'},{i:'💊',t:'<strong>Complete antibiotics</strong> if prescribed.'},{i:'🛌',t:'<strong>Rest and stay warm</strong>.'},{i:'💧',t:'<strong>Drink plenty of fluids</strong>.'}]},
+  { id:'migraine', name:'Migraine', icon:'😖', symptoms:['severe headache','nausea','vomiting','light sensitivity','sound sensitivity','visual aura','dizziness','fatigue'], risk:'low', desc:'Recurring moderate to severe headache.', recs:[{i:'🌑',t:'<strong>Rest in a dark room</strong>.'},{i:'💊',t:'<strong>Take pain relief early</strong>.'},{i:'💧',t:'<strong>Stay hydrated</strong>.'},{i:'📔',t:'<strong>Keep a migraine diary</strong>.'}]},
+  { id:'dengue', name:'Dengue Fever', icon:'🦟', symptoms:['high fever','severe headache','eye pain','joint pain','muscle pain','rash','nausea','vomiting','fatigue'], risk:'high', desc:'Mosquito-borne viral infection.', recs:[{i:'👨‍⚕️',t:'<strong>See a doctor immediately</strong>.'},{i:'💊',t:'<strong>Only take paracetamol</strong>.'},{i:'💧',t:'<strong>Drink lots of fluids</strong>.'},{i:'🦟',t:'<strong>Use mosquito repellent</strong>.'}]},
+  { id:'asthma', name:'Asthma Attack', icon:'💨', symptoms:['shortness of breath','wheezing','coughing','chest tightness','rapid breathing','anxiety','difficulty speaking'], risk:'high', desc:'Airways inflame and narrow.', recs:[{i:'💨',t:'<strong>Use rescue inhaler</strong>.'},{i:'🧘',t:'<strong>Sit upright</strong>, breathe slowly.'},{i:'🚨',t:'<strong>Call 112 if no improvement</strong>.'},{i:'🚫',t:'<strong>Remove triggers</strong>.'}]},
+  { id:'anxiety', name:'Anxiety Disorder', icon:'😰', symptoms:['rapid heartbeat','sweating','trembling','shortness of breath','dizziness','nausea','chest pain','fatigue','sleep problems','difficulty concentrating'], risk:'low', desc:'Persistent worry or fear.', recs:[{i:'🧘',t:'<strong>Practice deep breathing</strong>.'},{i:'👨‍⚕️',t:'<strong>See a therapist</strong> (CBT is effective).'},{i:'🏃',t:'<strong>Exercise regularly</strong>.'},{i:'📵',t:'<strong>Limit caffeine/social media</strong>.'}]}
 ];
 
-// ── EMERGENCY PATTERNS ──────────────────────────────────────
 const EMERGENCY_PATTERNS = [
-  {
-    name: 'Possible Heart Attack',
-    keywords: ['chest pain', 'chest tightness', 'left arm pain', 'jaw pain'],
-    requiredAny: ['chest pain', 'chest tightness'],
-    co_symptoms: ['shortness of breath', 'sweating', 'left arm pain', 'jaw pain', 'nausea', 'back pain']
-  },
-  {
-    name: 'Possible Stroke',
-    keywords: ['face drooping', 'sudden numbness', 'slurred speech', 'sudden weakness', 'sudden confusion', 'severe headache', 'vision problems', 'loss of balance'],
-    requiredAny: ['face drooping', 'slurred speech', 'sudden numbness', 'sudden weakness']
-  }
+  { name:'Possible Heart Attack', requiredAny:['chest pain','chest tightness'], co:['shortness of breath','sweating','left arm pain','jaw pain','nausea'] },
+  { name:'Possible Stroke', requiredAny:['face drooping','slurred speech','sudden numbness','sudden weakness'] }
 ];
 
-// ── QUICK SUGGESTIONS ───────────────────────────────────────
-const QUICK_SYMPTOMS = [
-  'fever', 'headache', 'cough', 'fatigue', 'chest pain',
-  'shortness of breath', 'nausea', 'dizziness', 'sore throat', 'body pain'
-];
-
-// ── ALL KNOWN SYMPTOMS for autocomplete ─────────────────────
+const QUICK_SYMPTOMS = ['fever','headache','cough','fatigue','chest pain','shortness of breath','nausea','dizziness','sore throat','body pain'];
 const ALL_SYMPTOMS = [...new Set(DISEASES.flatMap(d => d.symptoms))].sort();
-
-// ── STATE ────────────────────────────────────────────────────
 let selectedSymptoms = new Set();
 
-// ── DOM HELPERS ──────────────────────────────────────────────
-const $ = id => document.getElementById(id);
+function getDiseaseDetectionHTML() {
+  return '<div class="content-card"><h3>🔍 Enter Your Symptoms</h3><p class="card-sub">Type a symptom and press Enter or click to add.</p>' +
+    '<div class="input-row"><div class="input-wrapper"><input type="text" id="symptom-input" placeholder="e.g. fever, headache, chest pain…" autocomplete="off"><div id="suggestions" class="suggestions hidden"></div></div>' +
+    '<button class="btn-add" onclick="addSymptomFromInput()">+ Add</button></div>' +
+    '<div id="symptom-tags" class="symptom-tags"></div>' +
+    '<div class="quick-symptoms"><span class="qs-label">Quick add:</span><div class="qs-chips" id="quick-chips"></div></div>' +
+    '<button class="btn-primary btn-teal" id="analyze-btn" onclick="analyzeSymptoms()" disabled><span>🤖</span> Analyze Symptoms</button></div>' +
+    '<div id="results-section" class="results-section hidden"></div>';
+}
 
-// ── INIT ─────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+function initDiseaseDetection() {
+  selectedSymptoms = new Set();
   renderQuickChips();
-  initInput();
-  renderMoodQuestions();
-});
-
-// ── TAB / PANEL NAVIGATION ───────────────────────────────────
-function activateTab(tabName) {
-  const mainApp = document.getElementById('main-panels');
-  // Hide all panels
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  // Show the right panel
-  const panel = document.getElementById('panel-' + tabName);
-  if (panel) panel.classList.add('active');
-  // Show the main-app container
-  mainApp.classList.add('active');
-  // Scroll to panels
-  mainApp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  initSymptomInput();
+  renderSymptomTags();
 }
-
-function closePanel() {
-  const mainApp = document.getElementById('main-panels');
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  mainApp.classList.remove('active');
-  // Scroll back to feature cards
-  document.querySelector('.feature-cards-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 
 function renderQuickChips() {
-  const wrap = $('quick-chips');
-  wrap.innerHTML = QUICK_SYMPTOMS.map(s =>
-    `<span class="qs-chip" onclick="addSymptom('${s}')">${s}</span>`
-  ).join('');
+  var wrap = document.getElementById('quick-chips');
+  if (!wrap) return;
+  wrap.innerHTML = QUICK_SYMPTOMS.map(function(s) {
+    var used = selectedSymptoms.has(s) ? ' used' : '';
+    return '<span class="qs-chip' + used + '" onclick="addSymptom(\'' + s + '\')">' + escapeHtml(s) + '</span>';
+  }).join('');
 }
 
-// ── SYMPTOM INPUT ────────────────────────────────────────────
-function initInput() {
-  const input = $('symptom-input');
-  const suggestions = $('suggestions');
-
-  input.addEventListener('input', () => {
-    const val = input.value.trim().toLowerCase();
-    if (val.length < 1) { suggestions.classList.add('hidden'); return; }
-    const matches = ALL_SYMPTOMS.filter(s => s.includes(val) && !selectedSymptoms.has(s)).slice(0, 6);
+function initSymptomInput() {
+  var input = document.getElementById('symptom-input');
+  if (!input) return;
+  input.addEventListener('input', function() {
+    var val = this.value.toLowerCase().trim();
+    var suggestions = document.getElementById('suggestions');
+    if (val.length < 2) { suggestions.classList.add('hidden'); return; }
+    var matches = ALL_SYMPTOMS.filter(function(s) { return s.includes(val) && !selectedSymptoms.has(s); });
     if (matches.length === 0) { suggestions.classList.add('hidden'); return; }
-    suggestions.innerHTML = matches.map(m =>
-      `<div class="suggestion-item" onclick="addSymptom('${m}')">${highlight(m, val)}</div>`
-    ).join('');
+    suggestions.innerHTML = matches.slice(0, 6).map(function(s) { return '<div class="suggestion-item" onclick="addSymptom(\'' + s + '\')">' + escapeHtml(s) + '</div>'; }).join('');
     suggestions.classList.remove('hidden');
   });
-
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { addSymptomFromInput(); }
+  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addSymptomFromInput(); } });
+  document.addEventListener('click', function(e) {
+    var suggestions = document.getElementById('suggestions');
+    if (suggestions && !e.target.closest('.input-wrapper')) suggestions.classList.add('hidden');
   });
-
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.input-wrapper')) suggestions.classList.add('hidden');
-  });
-}
-
-function highlight(str, query) {
-  return str.replace(new RegExp(`(${query})`, 'gi'), '<mark style="background:rgba(0,212,170,0.3);color:#00d4aa;border-radius:3px">$1</mark>');
 }
 
 function addSymptomFromInput() {
-  const input = $('symptom-input');
-  const val = input.value.trim().toLowerCase();
+  var input = document.getElementById('symptom-input');
+  if (!input) return;
+  var val = input.value.toLowerCase().trim();
   if (val) { addSymptom(val); input.value = ''; }
+  var suggestions = document.getElementById('suggestions');
+  if (suggestions) suggestions.classList.add('hidden');
 }
 
 function addSymptom(symptom) {
-  symptom = symptom.trim().toLowerCase();
-  if (!symptom || selectedSymptoms.has(symptom)) return;
+  if (selectedSymptoms.has(symptom)) return;
   selectedSymptoms.add(symptom);
-  renderTags();
-  $('symptom-input').value = '';
-  $('suggestions').classList.add('hidden');
-  updateAnalyzeBtn();
+  renderSymptomTags();
+  renderQuickChips();
+  var btn = document.getElementById('analyze-btn');
+  if (btn) btn.disabled = selectedSymptoms.size === 0;
 }
 
 function removeSymptom(symptom) {
   selectedSymptoms.delete(symptom);
-  renderTags();
-  updateAnalyzeBtn();
+  renderSymptomTags();
+  renderQuickChips();
+  var btn = document.getElementById('analyze-btn');
+  if (btn) btn.disabled = selectedSymptoms.size === 0;
 }
 
-function renderTags() {
-  const wrap = $('symptom-tags');
-  if (selectedSymptoms.size === 0) { wrap.innerHTML = ''; return; }
-  wrap.innerHTML = [...selectedSymptoms].map(s =>
-    `<div class="tag">
-      <span>💊 ${s}</span>
-      <span class="remove" onclick="removeSymptom('${s}')">✕</span>
-    </div>`
-  ).join('');
+function renderSymptomTags() {
+  var wrap = document.getElementById('symptom-tags');
+  if (!wrap) return;
+  wrap.innerHTML = Array.from(selectedSymptoms).map(function(s) {
+    return '<span class="symptom-tag">' + escapeHtml(s) + ' <span class="tag-remove" onclick="removeSymptom(\'' + s + '\')">×</span></span>';
+  }).join('');
 }
 
-function updateAnalyzeBtn() {
-  $('analyze-btn').disabled = selectedSymptoms.size === 0;
-}
-
-// ── AI ENGINE ────────────────────────────────────────────────
 function analyzeSymptoms() {
-  const symptoms = [...selectedSymptoms];
+  if (selectedSymptoms.size === 0) return;
+  var symptoms = Array.from(selectedSymptoms);
 
-  // 1. Check for emergency
-  const emergency = detectEmergency(symptoms);
-  if (emergency) {
-    showEmergency(emergency);
+  // Check emergencies
+  for (var i = 0; i < EMERGENCY_PATTERNS.length; i++) {
+    var ep = EMERGENCY_PATTERNS[i];
+    var hasRequired = ep.requiredAny.some(function(s) { return symptoms.includes(s); });
+    if (hasRequired) { showEmergency(ep.name); return; }
   }
 
-  // 2. Score each disease
-  const scored = DISEASES.map(d => {
-    const matched = d.symptoms.filter(s =>
-      symptoms.some(sym => s.includes(sym) || sym.includes(s))
-    );
-    const confidence = Math.min(100, Math.round((matched.length / Math.max(symptoms.length, d.symptoms.length * 0.4)) * 100));
-    return { ...d, matched, confidence };
-  })
-  .filter(d => d.confidence > 0)
-  .sort((a, b) => b.confidence - a.confidence)
-  .slice(0, 5);
+  // Score diseases
+  var scored = DISEASES.map(function(d) {
+    var matched = d.symptoms.filter(function(s) { return symptoms.includes(s); });
+    return { disease: d, matchCount: matched.length, matchPercent: Math.round(matched.length / d.symptoms.length * 100), matched: matched };
+  }).filter(function(s) { return s.matchCount > 0; }).sort(function(a, b) { return b.matchPercent - a.matchPercent; });
+
+  var resultsDiv = document.getElementById('results-section');
+  if (!resultsDiv) return;
 
   if (scored.length === 0) {
-    showNoResults();
+    resultsDiv.innerHTML = '<div class="content-card"><h3>No matches found</h3><p class="card-sub">Try adding more symptoms or different terms.</p></div>';
+    resultsDiv.classList.remove('hidden');
     return;
   }
 
-  // 3. Compute overall risk
-  const overallRisk = computeOverallRisk(scored);
+  var topRisk = scored[0].disease.risk;
+  var riskColors = { low: 'low', medium: 'medium', high: 'high' };
+  var riskDescs = { low: 'Monitor symptoms at home.', medium: 'Consider seeing a doctor.', high: 'Seek medical attention soon.' };
 
-  // 4. Render results
-  renderResults(scored, overallRisk);
+  var html = '<div class="content-card risk-card"><div class="risk-label">Overall Risk Level</div>' +
+    '<div class="risk-badge ' + riskColors[topRisk] + '">' + topRisk.toUpperCase() + '</div>' +
+    '<div class="risk-desc">' + riskDescs[topRisk] + '</div>' +
+    '<div class="risk-meter"><div class="risk-fill ' + riskColors[topRisk] + '"></div></div></div>';
+
+  html += '<div class="content-card"><h3>🩺 Possible Conditions</h3><p class="card-sub">Based on your symptoms — not a diagnosis.</p><div class="conditions-list">';
+  scored.slice(0, 5).forEach(function(s) {
+    html += '<div class="condition-item"><span class="condition-icon">' + s.disease.icon + '</span><div class="condition-info">' +
+      '<div class="condition-name">' + escapeHtml(s.disease.name) + '</div>' +
+      '<div class="condition-match">' + s.matchCount + '/' + s.disease.symptoms.length + ' symptoms match (' + s.matchPercent + '%)</div>' +
+      '<div class="match-bar"><div class="match-fill" style="width:' + s.matchPercent + '%"></div></div></div></div>';
+  });
+  html += '</div></div>';
+
+  var topDisease = scored[0].disease;
+  html += '<div class="content-card"><h3>📋 What To Do Next</h3><div class="recommendations-list">';
+  topDisease.recs.forEach(function(r) {
+    html += '<div class="rec-item"><span class="rec-icon">' + r.i + '</span><span>' + r.t + '</span></div>';
+  });
+  html += '</div></div>';
+  html += '<div class="disclaimer-card">⚕️ <strong>Disclaimer:</strong> Not a substitute for professional medical advice.</div>';
+
+  resultsDiv.innerHTML = html;
+  resultsDiv.classList.remove('hidden');
 }
 
-function detectEmergency(symptoms) {
-  for (const pattern of EMERGENCY_PATTERNS) {
-    const hasRequired = pattern.requiredAny.some(req =>
-      symptoms.some(s => s.includes(req) || req.includes(s))
-    );
-    if (!hasRequired) continue;
-    const matchedKeywords = pattern.keywords.filter(k =>
-      symptoms.some(s => s.includes(k) || k.includes(s))
-    );
-    if (matchedKeywords.length >= 2) {
-      return { name: pattern.name, matched: matchedKeywords };
-    }
-  }
-  return null;
-}
-
-function computeOverallRisk(scored) {
-  const top3 = scored.slice(0, 3);
-  const hasHigh = top3.some(d => d.risk === 'high' && d.confidence > 30);
-  const hasMedium = top3.some(d => d.risk === 'medium' && d.confidence > 40);
-  if (hasHigh) return 'high';
-  if (hasMedium) return 'medium';
-  return 'low';
-}
-
-// ── RENDER RESULTS ───────────────────────────────────────────
-function renderResults(scored, overallRisk) {
-  const section = $('results-section');
-  section.classList.remove('hidden');
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-  renderRisk(overallRisk);
-  renderConditions(scored);
-  renderRecommendations(scored);
-  renderHospitals(overallRisk);
-}
-
-function renderRisk(risk) {
-  const labels = {
-    low:    { text: '🟢 LOW RISK',    desc: 'Your symptoms suggest a mild condition. Monitor and rest.', fill: '30%' },
-    medium: { text: '🟡 MEDIUM RISK', desc: 'These symptoms need attention. Consult a doctor soon.',    fill: '60%' },
-    high:   { text: '🔴 HIGH RISK',   desc: 'Urgent attention required. Please see a doctor immediately.', fill: '90%' }
-  };
-  const r = labels[risk];
-  const badge = $('risk-badge');
-  badge.textContent = r.text;
-  badge.className = `risk-badge ${risk}`;
-  $('risk-desc').textContent = r.desc;
-  const fill = $('risk-fill');
-  fill.className = `risk-fill ${risk}`;
-  setTimeout(() => { fill.style.width = r.fill; }, 100);
-}
-
-function renderConditions(scored) {
-  $('conditions-list').innerHTML = scored.map(d => `
-    <div class="condition-item">
-      <div class="cond-icon">${d.icon}</div>
-      <div class="cond-info">
-        <div class="cond-name">${d.name}</div>
-        <div class="cond-matches">Matched: ${d.matched.join(', ') || 'general symptoms'}</div>
-      </div>
-      <div class="cond-bar-wrap">
-        <div class="cond-confidence">${d.confidence}% match</div>
-        <div class="cond-bar"><div class="cond-fill" style="width:${d.confidence}%"></div></div>
-      </div>
-      <span class="cond-risk-badge ${d.risk}">${d.risk}</span>
-    </div>
-  `).join('');
-}
-
-function renderRecommendations(scored) {
-  // Merge unique recommendations from top 1-2 diseases + general
-  const topDiseases = scored.slice(0, 2);
-  const recs = [];
-  topDiseases.forEach(d => recs.push(...d.recommendations));
-
-  // Add general recs
-  recs.push({ icon: '📍', text: '<strong>Visit the nearest hospital</strong> listed below for a proper evaluation.' });
-  recs.push({ icon: '📵', text: '<strong>Avoid self-medicating</strong> without a doctor\'s guidance.' });
-
-  const unique = recs.slice(0, 6);
-  $('recommendations-list').innerHTML = unique.map(r =>
-    `<div class="rec-item"><div class="rec-icon">${r.icon}</div><div class="rec-text">${r.text}</div></div>`
-  ).join('');
-}
-
-const HOSPITALS = [
-  { name: 'City General Hospital', specialty: 'Multi-Specialty', rating: '⭐ 4.7', dist: '1.2 km', lat: 28.6139, lng: 77.2090 },
-  { name: 'Apollo Clinic', specialty: 'Primary Care & Emergency', rating: '⭐ 4.8', dist: '2.0 km', lat: 28.6200, lng: 77.2150 },
-  { name: 'Max Super Speciality', specialty: 'Cardiac & Neurology', rating: '⭐ 4.9', dist: '3.5 km', lat: 28.6250, lng: 77.2000 },
-  { name: 'Fortis Healthcare', specialty: 'Internal Medicine', rating: '⭐ 4.6', dist: '4.1 km', lat: 28.6100, lng: 77.2200 },
-  { name: '24×7 MedCentre', specialty: 'Urgent Care', rating: '⭐ 4.5', dist: '0.8 km', lat: 28.6080, lng: 77.2050 }
-];
-
-function renderHospitals() {
-  $('hospitals-grid').innerHTML = HOSPITALS.map(h => `
-    <div class="hospital-card">
-      <div class="hosp-name">🏥 ${h.name}</div>
-      <div class="hosp-specialty">${h.specialty}</div>
-      <div class="hosp-meta">
-        <span>${h.rating}</span>
-        <span>📍 ${h.dist}</span>
-      </div>
-      <a class="btn-directions" href="https://www.google.com/maps/dir/?api=1&destination=${h.lat},${h.lng}" target="_blank" rel="noopener">
-        🗺️ Get Directions
-      </a>
-    </div>
-  `).join('');
-}
-
-function showNoResults() {
-  const section = $('results-section');
-  section.classList.remove('hidden');
-  $('conditions-list').innerHTML = `
-    <div style="text-align:center;padding:40px;color:var(--text-dim)">
-      <div style="font-size:3rem;margin-bottom:16px">🤔</div>
-      <p>No specific conditions matched. Please try adding more specific symptoms.</p>
-    </div>`;
-}
-
-// ── EMERGENCY MODAL ──────────────────────────────────────────
-function showEmergency(emergency) {
-  $('em-condition-text').innerHTML = `
-    ⚡ ${emergency.name}<br>
-    <small style="font-weight:400;opacity:0.8">Symptoms detected: ${emergency.matched.join(', ')}</small>
-  `;
-  $('emergency-modal').classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
+function showEmergency(conditionName) {
+  var modal = document.getElementById('emergency-modal');
+  var condText = document.getElementById('em-condition-text');
+  if (condText) condText.textContent = conditionName;
+  if (modal) modal.classList.remove('hidden');
 }
 
 function closeEmergency() {
-  $('emergency-modal').classList.add('hidden');
-  document.body.style.overflow = '';
+  var modal = document.getElementById('emergency-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
-// ── DEPRESSION ANALYSIS ENGINE ────────────────────────────────
-
-const MOOD_QUESTIONS = [
-  {
-    id: 'interest',
-    text: 'Over the last two weeks, how often have you had little interest or pleasure in doing things?',
-    options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day']
-  },
-  {
-    id: 'hopeless',
-    text: 'How often have you felt down, depressed, or hopeless?',
-    options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day']
-  },
-  {
-    id: 'energy',
-    text: 'How often have you felt tired or had little energy?',
-    options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day']
-  },
-  {
-    id: 'concentration',
-    text: 'Have you had trouble concentrating on things, such as reading or working?',
-    options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day']
-  },
-  {
-    id: 'anxiety',
-    text: 'Have you been feeling nervous, anxious, or on edge?',
-    options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day']
-  },
-  {
-    id: 'appetite',
-    text: 'Have you noticed changes in your appetite (eating too much or too little)?',
-    options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day']
-  }
+// ── NEARBY HOSPITALS ─────────────────────────────────────────
+var HOSPITALS = [
+  { name:'City General Hospital', addr:'123 Main St, Downtown', dist:'0.8 km', phone:'112' },
+  { name:'Metro Medical Center', addr:'456 Oak Ave, Midtown', dist:'1.2 km', phone:'108' },
+  { name:'St. Mary\'s Hospital', addr:'789 Pine Rd, Uptown', dist:'2.1 km', phone:'112' },
+  { name:'Community Health Clinic', addr:'321 Elm St, Eastside', dist:'0.5 km', phone:'108' },
+  { name:'University Hospital', addr:'654 Maple Dr, Campus Area', dist:'3.0 km', phone:'112' },
+  { name:'Children\'s Medical Center', addr:'987 Cedar Ln, Westside', dist:'1.8 km', phone:'108' }
 ];
 
-// State for depression form
-let moodAnswers = {}; // { questionId: score 0-3 }
-let selectedSleep = null;
-
-function renderMoodQuestions() {
-  const container = $('mood-questions');
-  if (!container) return;
-  container.innerHTML = MOOD_QUESTIONS.map(q => `
-    <div class="mood-q" id="mq-${q.id}">
-      <div class="mood-q-text">${q.text}</div>
-      <div class="mood-options">
-        ${q.options.map((opt, idx) => `
-          <button class="mood-opt" data-qid="${q.id}" data-score="${idx}" onclick="selectMoodOpt(this, '${q.id}', ${idx})">
-            ${opt}
-          </button>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
+function getNearbyHospitalsHTML() {
+  var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Click any card for directions.</p></div><div class="hospital-grid">';
+  HOSPITALS.forEach(function(h) {
+    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/' + encodeURIComponent(h.name) + '\', \'_blank\')">' +
+      '<h4>' + escapeHtml(h.name) + '</h4><p>' + escapeHtml(h.addr) + '</p><span class="distance">' + h.dist + '</span></div>';
+  });
+  html += '</div>';
+  return html;
 }
 
-function selectMoodOpt(btn, questionId, score) {
-  // Deselect siblings
-  btn.closest('.mood-options').querySelectorAll('.mood-opt').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  moodAnswers[questionId] = score;
+// ── NEARBY PHARMACY ──────────────────────────────────────────
+var PHARMACIES = [
+  { name:'MedPlus Pharmacy', addr:'100 Health Blvd', dist:'0.3 km', hours:'24/7' },
+  { name:'Apollo Pharmacy', addr:'200 Care St', dist:'0.7 km', hours:'8AM - 10PM' },
+  { name:'LifeLine Drugs', addr:'300 Wellness Ave', dist:'1.1 km', hours:'24/7' },
+  { name:'City Pharmacy', addr:'400 Medical Ln', dist:'1.5 km', hours:'9AM - 9PM' },
+  { name:'QuickMed Store', addr:'500 Cure Rd', dist:'0.9 km', hours:'7AM - 11PM' }
+];
+
+function getNearbyPharmacyHTML() {
+  var html = '<div class="content-card"><h3>💊 Nearby Pharmacies</h3><p class="card-sub">Find pharmacies near you.</p></div><div class="hospital-grid">';
+  PHARMACIES.forEach(function(p) {
+    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/' + encodeURIComponent(p.name + ' pharmacy') + '\', \'_blank\')">' +
+      '<h4>' + escapeHtml(p.name) + '</h4><p>' + escapeHtml(p.addr) + '</p><p style="font-size:0.78rem;color:var(--teal);margin-top:4px;">🕐 ' + p.hours + '</p><span class="distance">' + p.dist + '</span></div>';
+  });
+  html += '</div>';
+  return html;
 }
 
-function selectSleep(btn) {
-  document.querySelectorAll('.sleep-btn').forEach(b => b.classList.remove('selected'));
+// ── HEALTH TIPS ──────────────────────────────────────────────
+function getHealthTipsHTML() {
+  var tips = [
+    { icon:'💧', title:'Stay Hydrated', desc:'Drink at least 8 glasses of water daily. Proper hydration supports kidney function, digestion, and brain health.' },
+    { icon:'🏃', title:'Exercise Regularly', desc:'30 minutes of moderate exercise most days reduces risk of heart disease, diabetes, and improves mental health.' },
+    { icon:'😴', title:'Prioritize Sleep', desc:'Aim for 7-9 hours of quality sleep. Poor sleep weakens immunity and impairs cognitive function.' },
+    { icon:'🥗', title:'Eat Balanced Meals', desc:'Include fruits, vegetables, lean proteins, and whole grains. Limit processed foods and added sugars.' },
+    { icon:'🧘', title:'Manage Stress', desc:'Practice mindfulness, deep breathing, or yoga. Chronic stress increases risk of many diseases.' },
+    { icon:'🚭', title:'Avoid Harmful Substances', desc:'Avoid smoking and limit alcohol. Both significantly increase risk of cancer and organ damage.' },
+    { icon:'🧴', title:'Practice Good Hygiene', desc:'Wash hands frequently, maintain oral hygiene, and keep your living environment clean.' },
+    { icon:'👨‍⚕️', title:'Regular Check-ups', desc:'Annual health screenings catch problems early. Don\'t skip preventive care appointments.' }
+  ];
+  var html = '<div class="content-card"><h3>💡 Health Tips</h3><p class="card-sub">Evidence-based tips for a healthier life.</p></div><div class="tips-grid">';
+  tips.forEach(function(t) {
+    html += '<div class="tip-card"><div class="tip-icon">' + t.icon + '</div><h4>' + escapeHtml(t.title) + '</h4><p>' + escapeHtml(t.desc) + '</p></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// ── DEPRESSION TEST ──────────────────────────────────────────
+var DEPRESSION_QUESTIONS = [
+  'Little interest or pleasure in doing things?',
+  'Feeling down, depressed, or hopeless?',
+  'Trouble falling or staying asleep, or sleeping too much?',
+  'Feeling tired or having little energy?',
+  'Poor appetite or overeating?',
+  'Feeling bad about yourself or that you are a failure?',
+  'Trouble concentrating on things?',
+  'Moving or speaking slowly, or being fidgety/restless?',
+  'Thoughts that you would be better off dead or of hurting yourself?'
+];
+
+var DEPRESSION_OPTIONS = ['Not at all', 'Several days', 'More than half the days', 'Nearly every day'];
+var depressionAnswers = {};
+var selectedSleep = '';
+
+function getDepressionTestHTML() {
+  var html = '<div class="content-card"><h3>📋 PHQ-9 Depression Screening</h3><p class="card-sub">Answer honestly — your responses stay on your device.</p><div id="dep-questions">';
+  DEPRESSION_QUESTIONS.forEach(function(q, i) {
+    html += '<div class="mood-question"><p>' + (i+1) + '. ' + escapeHtml(q) + '</p><div class="mood-options">';
+    DEPRESSION_OPTIONS.forEach(function(opt, j) {
+      html += '<button class="mood-opt" data-q="' + i + '" data-v="' + j + '" onclick="selectDepAnswer(this,' + i + ',' + j + ')">' + escapeHtml(opt) + '</button>';
+    });
+    html += '</div></div>';
+  });
+  html += '</div>';
+  html += '<div class="content-card"><h3>📊 Stress Level</h3><p class="card-sub">How stressed in the past two weeks?</p>' +
+    '<div class="stress-slider-wrap"><input type="range" id="stress-slider" min="1" max="10" value="5" class="stress-slider" oninput="updateStressLabel(this.value)">' +
+    '<div class="stress-labels"><span>😌 Calm</span><span id="stress-value-label" class="stress-current">5 / 10</span><span>😰 Very Stressed</span></div></div></div>';
+  html += '<div class="content-card"><h3>😴 Sleep Quality</h3><p class="card-sub">Average hours of sleep per night?</p>' +
+    '<div class="sleep-options"><button class="sleep-btn" onclick="selectSleep(this)" data-val="less4">Less than 4h</button>' +
+    '<button class="sleep-btn" onclick="selectSleep(this)" data-val="4to6">4 – 6 hours</button>' +
+    '<button class="sleep-btn" onclick="selectSleep(this)" data-val="6to8">6 – 8 hours</button>' +
+    '<button class="sleep-btn" onclick="selectSleep(this)" data-val="more8">More than 8h</button></div></div>';
+  html += '<button class="btn-primary btn-purple" style="width:100%;margin-top:8px;" onclick="analyzeDepression()">🧠 Analyze Mental Health</button>';
+  html += '<div id="depression-results" class="results-section hidden"></div>';
+  return html;
+}
+
+function selectDepAnswer(btn, qIdx, val) {
+  depressionAnswers[qIdx] = val;
+  var siblings = btn.parentElement.querySelectorAll('.mood-opt');
+  siblings.forEach(function(b) { b.classList.remove('selected'); });
   btn.classList.add('selected');
-  selectedSleep = btn.dataset.val;
 }
 
 function updateStressLabel(val) {
-  const label = $('stress-value-label');
+  var label = document.getElementById('stress-value-label');
   if (label) label.textContent = val + ' / 10';
 }
 
+function selectSleep(btn) {
+  selectedSleep = btn.getAttribute('data-val');
+  btn.parentElement.querySelectorAll('.sleep-btn').forEach(function(b) { b.classList.remove('selected'); });
+  btn.classList.add('selected');
+}
+
 function analyzeDepression() {
-  // Compute mood score (0–18 from 6 questions × 0–3)
-  const moodScore = Object.values(moodAnswers).reduce((sum, v) => sum + v, 0);
-  const answeredCount = Object.keys(moodAnswers).length;
+  var total = 0;
+  var answered = Object.keys(depressionAnswers).length;
+  if (answered < 5) { alert('Please answer at least 5 questions.'); return; }
+  for (var k in depressionAnswers) total += depressionAnswers[k];
 
-  const stressVal = parseInt(($('stress-slider') || { value: '5' }).value, 10);
+  var slider = document.getElementById('stress-slider');
+  var stress = slider ? parseInt(slider.value) : 5;
+  var sleepPenalty = 0;
+  if (selectedSleep === 'less4') sleepPenalty = 4;
+  else if (selectedSleep === '4to6') sleepPenalty = 2;
+  else if (selectedSleep === 'more8') sleepPenalty = 1;
 
-  // Sleep modifier: poor sleep worsens score
-  const sleepModifier = {
-    less4: 6, '4to6': 3, '6to8': 0, more8: 1
-  }[selectedSleep] ?? 2;
+  var score = total + Math.round(stress * 0.5) + sleepPenalty;
+  var maxScore = 27 + 5 + 4;
+  var pct = Math.round(score / maxScore * 100);
 
-  // Total score (0 ~ 34): mood (0-18) + stress (0-10) + sleep (0-6)
-  const total = moodScore + stressVal + sleepModifier;
-
-  let level, badgeText, desc, fillPct;
-  if (total <= 10) {
-    level = 'low'; badgeText = '💚 WELLNESS'; desc = 'Your mood and stress indicators look healthy. Keep up your positive habits!'; fillPct = '20%';
-  } else if (total <= 21) {
-    level = 'medium'; badgeText = '🟡 MODERATE CONCERN'; desc = 'Some signs of stress or low mood detected. Consider self-care strategies and reach out to someone you trust.'; fillPct = '55%';
+  var level, desc, suggestions;
+  if (pct <= 25) {
+    level = 'low'; desc = 'Your mental health appears stable. Keep up your healthy habits!';
+    suggestions = [{i:'🌟',t:'Continue your positive routines.'},{i:'🏃',t:'Stay physically active.'},{i:'🧑‍🤝‍🧑',t:'Maintain social connections.'}];
+  } else if (pct <= 55) {
+    level = 'medium'; desc = 'Some signs of emotional strain. Consider self-care strategies.';
+    suggestions = [{i:'🧘',t:'Try daily mindfulness or meditation.'},{i:'😴',t:'Improve your sleep routine.'},{i:'📝',t:'Journal your thoughts and feelings.'},{i:'👨‍⚕️',t:'Consider talking to a counselor.'}];
   } else {
-    level = 'high'; badgeText = '🔴 HIGH CONCERN'; desc = 'Your responses suggest significant distress. Please speak with a mental health professional soon.'; fillPct = '90%';
+    level = 'high'; desc = 'Significant signs of distress. Please reach out for support.';
+    suggestions = [{i:'🆘',t:'<strong>Contact a helpline</strong>: iCall 9152987821 or Vandrevala 1860-2662-345.'},{i:'👨‍⚕️',t:'<strong>See a mental health professional</strong> as soon as possible.'},{i:'🤝',t:'Talk to someone you trust.'},{i:'🛌',t:'Prioritize rest and self-care.'}];
   }
 
-  // Tailored suggestions
-  const suggestions = buildMentalSuggestions(level, stressVal, selectedSleep, answeredCount);
-
-  // Render
-  const resultsSection = $('depression-results');
-  resultsSection.classList.remove('hidden');
-
-  const badge = $('mental-badge');
-  badge.textContent = badgeText;
-  badge.className = `risk-badge ${level}`;
-  $('mental-desc').textContent = desc;
-  const fill = $('mental-fill');
-  fill.className = `risk-fill ${level}`;
-  setTimeout(() => { fill.style.width = fillPct; }, 100);
-
-  $('mental-suggestions').innerHTML = suggestions.map(s =>
-    `<div class="rec-item"><div class="rec-icon">${s.icon}</div><div class="rec-text">${s.text}</div></div>`
-  ).join('');
-
-  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  var resultsDiv = document.getElementById('depression-results');
+  if (!resultsDiv) return;
+  var html = '<div class="content-card risk-card"><div class="risk-label">Mental Wellness Score</div>' +
+    '<div class="risk-badge ' + level + '">' + level.toUpperCase() + ' (' + pct + '%)</div>' +
+    '<div class="risk-desc">' + desc + '</div><div class="risk-meter"><div class="risk-fill ' + level + '"></div></div></div>';
+  html += '<div class="content-card"><h3>💡 Suggestions</h3><div class="recommendations-list">';
+  suggestions.forEach(function(s) { html += '<div class="rec-item"><span class="rec-icon">' + s.i + '</span><span>' + s.t + '</span></div>'; });
+  html += '</div></div><div class="disclaimer-card">⚕️ <strong>Disclaimer:</strong> Please consult a licensed mental health professional.</div>';
+  resultsDiv.innerHTML = html;
+  resultsDiv.classList.remove('hidden');
 }
 
-function buildMentalSuggestions(level, stress, sleep, answeredCount) {
-  const recs = [];
+// ── MOOD TRACKER ─────────────────────────────────────────────
+var moodLog = JSON.parse(localStorage.getItem('nn_mood_log') || '[]');
+var selectedMoodEmoji = '';
 
-  if (level === 'high') {
-    recs.push({ icon: '👨‍⚕️', text: '<strong>Seek professional help</strong> — talk to a licensed therapist or psychiatrist as soon as possible.' });
-    recs.push({ icon: '📞', text: '<strong>Crisis helpline</strong> — iCall: 9152987821 · Vandrevala Foundation: 1860-2662-345 (24×7).' });
-  }
-  if (level === 'medium' || level === 'high') {
-    recs.push({ icon: '🧘', text: '<strong>Practice mindfulness</strong> — even 10 minutes of guided meditation daily can reduce cortisol levels significantly.' });
-    recs.push({ icon: '📓', text: '<strong>Journal your feelings</strong> — writing helps process emotions and identify patterns in your mood.' });
-  }
-  if (stress >= 7) {
-    recs.push({ icon: '🏃', text: '<strong>Exercise regularly</strong> — 30 minutes of cardio releases endorphins and reduces anxiety hormones.' });
-    recs.push({ icon: '🌿', text: '<strong>Limit stimulants</strong> — reduce caffeine and news consumption, especially after 6 PM.' });
-  }
-  if (sleep === 'less4' || sleep === '4to6') {
-    recs.push({ icon: '😴', text: '<strong>Improve sleep hygiene</strong> — maintain a consistent schedule, dim lights an hour before bed, and avoid screens.' });
-    recs.push({ icon: '🌡️', text: '<strong>Cool your room</strong> — 65–68°F (18–20°C) is the optimal temperature for deep sleep.' });
-  }
-  recs.push({ icon: '🤝', text: '<strong>Social connection</strong> — spend quality time with supportive friends or family, even a short call helps.' });
-  if (answeredCount < MOOD_QUESTIONS.length) {
-    recs.push({ icon: '✏️', text: '<strong>Complete all questions</strong> for a more accurate assessment next time.' });
-  }
-  if (level === 'low') {
-    recs.push({ icon: '🌟', text: '<strong>Maintain your wellbeing</strong> — continue with your positive routines and regular check-ins on your mental health.' });
-  }
-  return recs.slice(0, 6);
+function getMoodTrackerHTML() {
+  var moods = ['😊','🙂','😐','😔','😢'];
+  var html = '<div class="content-card"><h3>📊 How are you feeling today?</h3><p class="card-sub">Select your current mood.</p>' +
+    '<div class="mood-selector">';
+  moods.forEach(function(m) {
+    html += '<button class="mood-select-btn" onclick="selectMoodEmoji(this, \'' + m + '\')">' + m + '</button>';
+  });
+  html += '</div><button class="mood-log-btn" onclick="logMood()">Log Today\'s Mood</button></div>';
+  html += '<div class="content-card"><h3>📅 Last 7 Days</h3><div class="mood-tracker-grid" id="mood-grid"></div></div>';
+  return html;
 }
+
+function selectMoodEmoji(btn, emoji) {
+  selectedMoodEmoji = emoji;
+  btn.closest('.mood-selector').querySelectorAll('.mood-select-btn').forEach(function(b) { b.classList.remove('selected'); });
+  btn.classList.add('selected');
+}
+
+function logMood() {
+  if (!selectedMoodEmoji) { alert('Select a mood first!'); return; }
+  var today = new Date().toISOString().slice(0, 10);
+  var existing = moodLog.findIndex(function(m) { return m.date === today; });
+  if (existing >= 0) moodLog[existing].mood = selectedMoodEmoji;
+  else moodLog.push({ date: today, mood: selectedMoodEmoji });
+  if (moodLog.length > 30) moodLog = moodLog.slice(-30);
+  localStorage.setItem('nn_mood_log', JSON.stringify(moodLog));
+  renderMoodGrid();
+  selectedMoodEmoji = '';
+  document.querySelectorAll('.mood-select-btn').forEach(function(b) { b.classList.remove('selected'); });
+}
+
+function renderMoodGrid() {
+  var grid = document.getElementById('mood-grid');
+  if (!grid) return;
+  var days = [];
+  for (var i = 6; i >= 0; i--) {
+    var d = new Date(); d.setDate(d.getDate() - i);
+    var dateStr = d.toISOString().slice(0, 10);
+    var entry = moodLog.find(function(m) { return m.date === dateStr; });
+    var dayName = d.toLocaleDateString('en', { weekday: 'short' });
+    days.push('<div class="mood-day"><span class="mood-emoji">' + (entry ? entry.mood : '·') + '</span><span class="mood-label">' + dayName + '</span></div>');
+  }
+  grid.innerHTML = days.join('');
+}
+
+// ── AI ADVICE ────────────────────────────────────────────────
+function getAIAdviceHTML() {
+  var advices = [
+    { title:'🌅 Morning Routine', text:'Start your day with 5 minutes of deep breathing. Avoid checking your phone for the first 30 minutes. Eat a nutritious breakfast and set one realistic goal for the day.' },
+    { title:'💪 Building Resilience', text:'Reframe negative thoughts by asking: "Will this matter in 5 years?" Practice gratitude by writing 3 things you\'re thankful for each night before bed.' },
+    { title:'🧑‍🤝‍🧑 Social Connection', text:'Isolation worsens depression. Reach out to one person today — even a short text counts. Join a community group or volunteer for a cause you care about.' },
+    { title:'📵 Digital Detox', text:'Social media comparison fuels anxiety. Set screen time limits. Replace scrolling with reading, walking, or creative hobbies.' },
+    { title:'🍎 Nutrition & Mood', text:'Omega-3 fatty acids (fish, walnuts) support brain health. Reduce sugar and processed foods which cause energy crashes and mood swings.' },
+    { title:'📝 Journaling Therapy', text:'Write freely for 10 minutes daily without judgment. Express fears, hopes, and emotions. Studies show journaling reduces symptoms of depression.' }
+  ];
+  var html = '<div class="content-card"><h3>🤖 AI-Driven Mental Health Advice</h3><p class="card-sub">Personalized strategies for emotional well-being.</p></div>';
+  advices.forEach(function(a) {
+    html += '<div class="advice-card"><h4>' + a.title + '</h4><p>' + escapeHtml(a.text) + '</p></div>';
+  });
+  return html;
+}
+
+// ── MEDITATION GUIDANCE ──────────────────────────────────────
+var meditationTimer = null;
+var meditationSeconds = 0;
+var meditationRunning = false;
+
+function getMeditationGuidanceHTML() {
+  var sessions = [
+    { emoji:'🌊', title:'Body Scan Relaxation', desc:'Progressive relaxation from head to toe. 10 min.', duration: 600 },
+    { emoji:'🌬️', title:'Deep Breathing (4-7-8)', desc:'Inhale 4s, hold 7s, exhale 8s. 5 min.', duration: 300 },
+    { emoji:'🌸', title:'Loving Kindness', desc:'Send compassion to yourself and others. 8 min.', duration: 480 },
+    { emoji:'🎯', title:'Focused Attention', desc:'Concentrate on a single point of focus. 10 min.', duration: 600 }
+  ];
+  var html = '<div class="content-card"><h3>🧘 Guided Meditation</h3><p class="card-sub">Choose a session to begin.</p></div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px;">';
+  sessions.forEach(function(s) {
+    html += '<div class="meditation-card" onclick="startMeditation(' + s.duration + ',\'' + escapeHtml(s.title) + '\')">' +
+      '<div class="meditation-emoji">' + s.emoji + '</div><h4>' + escapeHtml(s.title) + '</h4><p>' + escapeHtml(s.desc) + '</p></div>';
+  });
+  html += '</div>';
+  html += '<div class="content-card" id="meditation-timer-area" style="display:none;"><div class="meditation-timer">' +
+    '<div class="timer-circle" id="med-timer-circle"><span id="med-timer-display">0:00</span></div>' +
+    '<p class="timer-instruction" id="med-timer-instruction">Focus on your breathing...</p>' +
+    '<button class="timer-btn" id="med-timer-btn" onclick="toggleMeditation()">Pause</button></div></div>';
+  return html;
+}
+
+function startMeditation(duration, title) {
+  meditationSeconds = duration;
+  meditationRunning = true;
+  var area = document.getElementById('meditation-timer-area');
+  var circle = document.getElementById('med-timer-circle');
+  var instruction = document.getElementById('med-timer-instruction');
+  if (area) area.style.display = 'block';
+  if (circle) circle.classList.add('active');
+  if (instruction) instruction.textContent = title + ' — Focus on your breathing...';
+  updateTimerDisplay();
+  clearInterval(meditationTimer);
+  meditationTimer = setInterval(function() {
+    if (!meditationRunning) return;
+    meditationSeconds--;
+    updateTimerDisplay();
+    if (meditationSeconds <= 0) {
+      clearInterval(meditationTimer);
+      meditationRunning = false;
+      var display = document.getElementById('med-timer-display');
+      if (display) display.textContent = '✓ Done';
+      if (circle) circle.classList.remove('active');
+      if (instruction) instruction.textContent = 'Session complete. Well done!';
+      var btn = document.getElementById('med-timer-btn');
+      if (btn) btn.textContent = 'Done';
+    }
+  }, 1000);
+}
+
+function toggleMeditation() {
+  meditationRunning = !meditationRunning;
+  var btn = document.getElementById('med-timer-btn');
+  if (btn) btn.textContent = meditationRunning ? 'Pause' : 'Resume';
+}
+
+function updateTimerDisplay() {
+  var display = document.getElementById('med-timer-display');
+  if (!display) return;
+  var m = Math.floor(meditationSeconds / 60);
+  var s = meditationSeconds % 60;
+  display.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// ── TAB FEATURE INITIALIZATION ───────────────────────────────
+function initTabFeature(tabId) {
+  switch (tabId) {
+    case 'disease-detection': initDiseaseDetection(); break;
+    case 'mood-tracker':
+      setTimeout(function() { renderMoodGrid(); }, 50);
+      break;
+  }
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  // Start on landing page
+  navigateTo('landing');
+});
