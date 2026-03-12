@@ -1,0 +1,15 @@
+{
+  "name": "hackathon-neuralnexus",
+  "private": true,
+  "scripts": {
+    "start": "node backend/server.js",
+    "start:backend": "node backend/server.js",
+    "build:helpmate": "npm --prefix Helpmate-AI run build"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1"
+  }
+}

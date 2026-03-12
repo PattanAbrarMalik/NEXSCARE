@@ -1,15 +1,49 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const MAIN_APP_DIR = path.join(__dirname, '..');
 
 app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+app.get('/', (req, res) => {
+  res.sendFile(path.join(MAIN_APP_DIR, 'index.html'));
+});
+
+app.get('/app.js', (req, res) => {
+  res.sendFile(path.join(MAIN_APP_DIR, 'app.js'));
+});
+
+app.get('/style.css', (req, res) => {
+  res.sendFile(path.join(MAIN_APP_DIR, 'style.css'));
+});
+
+app.get('/hero-thumbnail.png', (req, res) => {
+  res.sendFile(path.join(MAIN_APP_DIR, 'hero-thumbnail.png'));
+});
+
+const HELPMATE_DIST_DIR = path.join(__dirname, '..', 'Helpmate-AI', 'dist');
+
+if (fs.existsSync(HELPMATE_DIST_DIR)) {
+  app.use('/helpmate', express.static(HELPMATE_DIST_DIR));
+  app.get('/helpmate/*', (req, res) => {
+    res.sendFile(path.join(HELPMATE_DIST_DIR, 'index.html'));
+  });
+}
+
+function normalizeRole(role) {
+  const normalized = (role || '').toString().toLowerCase();
+  if (normalized === 'assistant' || normalized === 'ai' || normalized === 'bot') {
+    return 'assistant';
+  }
+  return 'user';
+}
 
 const SYSTEM_PROMPT = `You are NeuralNexus AI, a compassionate and empathetic mental health assistant. 
 Your role is to:
@@ -26,31 +60,62 @@ Always begin by acknowledging how the user feels before offering any advice.`;
 
 app.post('/chat', async (req, res) => {
   try {
-    const { message, history = [] } = req.body;
-
-    if (!message || typeof message !== 'string' || message.trim() === '') {
-      return res.status(400).json({ error: 'Message is required.' });
+    if (!process.env.OPENROUTER_API_KEY) {
+      return res.status(500).json({ error: 'OPENROUTER_API_KEY is missing in backend/.env' });
     }
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      systemInstruction: SYSTEM_PROMPT,
-    });
+    const { message, history = [], profile = {} } = req.body;
+    const profilePromptParts = [];
 
-    // Map history to Gemini format
-    const geminiHistory = history.map(m => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
-    }));
+    if (profile.firstName && typeof profile.firstName === 'string') {
+      profilePromptParts.push(`User preferred name: ${profile.firstName.trim()}`);
+    }
+    if (profile.systemInstructions && typeof profile.systemInstructions === 'string') {
+      profilePromptParts.push(profile.systemInstructions.trim());
+    }
 
-    const chat = model.startChat({ history: geminiHistory });
-    const result = await chat.sendMessage(message.trim());
-    const reply = result.response.text();
+    const systemPrompt = profilePromptParts.length > 0
+      ? `${SYSTEM_PROMPT}\n\nAdditional instructions:\n${profilePromptParts.join('\n')}`
+      : SYSTEM_PROMPT;
+
+    const messages = [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      ...history.map(m => ({
+        role: normalizeRole(m.role),
+        content: m.content
+      })),
+      {
+        role: "user",
+        content: message
+      }
+    ];
+
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "openai/gpt-3.5-turbo",
+        messages: messages
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 60000
+      }
+    );
+
+    const reply = response.data.choices[0].message.content;
 
     res.json({ reply });
+
   } catch (err) {
-    console.error('Gemini API Error:', err.message);
-    res.status(500).json({ error: 'Failed to get response from AI. Please check your API key and try again.' });
+    console.error("OpenRouter Error:", err.message);
+    console.error("Full Error:", err.response?.data || err);
+    res.status(500).json({ error: err.response?.data?.error?.message || "AI response failed." });
   }
 });
 

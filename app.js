@@ -1297,11 +1297,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── AI CHATBOT ───────────────────────────────────────────────
-const CHAT_BACKEND_URL = 'http://localhost:3001/chat';
+const CHAT_ENDPOINTS = ['/chat', 'http://localhost:3001/chat'];
 var chatHistory = [];
 
 function initChatbot() {
-  // Show welcome message
   appendMessage('ai', "Hi there 👋 I'm **NeuralNexus AI**, your personal mental health companion. You can talk to me about anything — how you're feeling, stress, anxiety, or just your day. I'm here to listen. 💙");
 }
 
@@ -1317,7 +1316,6 @@ function appendMessage(role, text) {
 
   var icon = role === 'user' ? '👤' : '🧠';
 
-  // Convert basic markdown-like **bold** to <strong>
   var formattedText = escapeHtml(text)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br>');
@@ -1351,6 +1349,37 @@ function removeTypingIndicator() {
   if (el) el.remove();
 }
 
+async function sendMessage(message, history) {
+  var lastError;
+
+  for (var i = 0; i < CHAT_ENDPOINTS.length; i++) {
+    try {
+      var response = await fetch(CHAT_ENDPOINTS[i], {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: message,
+          history: history
+        })
+      });
+
+      var data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send message.');
+      }
+
+      return data.reply;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Unable to reach chat service.');
+}
+
 async function sendChatMessage() {
   var input = document.getElementById('chatbot-input');
   var sendBtn = document.getElementById('chatbot-send-btn');
@@ -1359,40 +1388,28 @@ async function sendChatMessage() {
   var message = input.value.trim();
   if (!message) return;
 
-  // Display user message
   appendMessage('user', message);
   input.value = '';
   input.style.height = 'auto';
 
-  // Record in history
   chatHistory.push({ role: 'user', content: message });
 
-  // Disable button while waiting
   if (sendBtn) sendBtn.disabled = true;
   showTypingIndicator();
 
   try {
-    var res = await fetch(CHAT_BACKEND_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: message,
-        history: chatHistory.slice(-10) // last 10 messages for context
-      })
-    });
-
-    var data = await res.json();
+    var reply = await sendMessage(message, chatHistory.slice(-12));
     removeTypingIndicator();
 
-    if (data.reply) {
-      appendMessage('ai', data.reply);
-      chatHistory.push({ role: 'ai', content: data.reply });
+    if (reply) {
+      appendMessage('ai', reply);
+      chatHistory.push({ role: 'assistant', content: reply });
     } else {
       appendMessage('ai', 'Sorry, I had trouble understanding that. Could you rephrase?');
     }
   } catch (err) {
     removeTypingIndicator();
-    appendMessage('ai', '⚠️ Cannot connect to NeuralNexus AI server. Please make sure the backend is running on port 3001.\n\n`cd backend && npm install && node server.js`');
+    appendMessage('ai', '⚠️ I could not connect to the AI service right now. Please make sure backend server is running on port 3001 and try again.');
   } finally {
     if (sendBtn) sendBtn.disabled = false;
     input.focus();
