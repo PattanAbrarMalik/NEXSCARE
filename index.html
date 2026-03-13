@@ -290,68 +290,6 @@
     </div>
   </div>
 
-  <!-- ═══════ AUTH MODAL (Sign In / Sign Up) ═══════ -->
-  <div id="auth-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
-    <div class="auth-overlay" onclick="closeAuthModal()"></div>
-    <div class="auth-box">
-      <button class="auth-close" onclick="closeAuthModal()" aria-label="Close">&times;</button>
-
-      <!-- Brand -->
-      <div class="auth-brand">
-        <span class="auth-brand-logo">🧬</span>
-        <span class="auth-brand-name">NeuralNexus</span>
-      </div>
-
-      <!-- Tabs -->
-      <div class="auth-tabs">
-        <button id="auth-tab-signin" class="auth-tab active" onclick="switchAuthTab('signin')">Sign In</button>
-        <button id="auth-tab-signup" class="auth-tab" onclick="switchAuthTab('signup')">Sign Up</button>
-      </div>
-
-      <!-- Sign In Form -->
-      <div id="auth-form-signin" class="auth-form">
-        <p class="auth-subtitle">Welcome back! Sign in to continue.</p>
-        <div class="auth-field">
-          <label for="signin-email">Email</label>
-          <input id="signin-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        <div class="auth-field">
-          <label for="signin-password">Password</label>
-          <input id="signin-password" type="password" placeholder="Your password" autocomplete="current-password" />
-        </div>
-        <div id="signin-error" class="auth-error hidden"></div>
-        <button class="auth-submit" onclick="handleSignIn()">Sign In →</button>
-        <p class="auth-switch">No account? <a href="#" onclick="switchAuthTab('signup'); return false;">Sign up free</a></p>
-      </div>
-
-      <!-- Sign Up Form -->
-      <div id="auth-form-signup" class="auth-form hidden">
-        <p class="auth-subtitle">Create your free account to get started.</p>
-        <div class="auth-field">
-          <label for="signup-name">Full Name</label>
-          <input id="signup-name" type="text" placeholder="Jane Doe" autocomplete="name" />
-        </div>
-        <div class="auth-field">
-          <label for="signup-email">Email</label>
-          <input id="signup-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        <div class="auth-field">
-          <label for="signup-password">Password</label>
-          <input id="signup-password" type="password" placeholder="Min. 6 characters" autocomplete="new-password" />
-        </div>
-        <div class="auth-field">
-          <label for="signup-confirm">Confirm Password</label>
-          <input id="signup-confirm" type="password" placeholder="Repeat password" autocomplete="new-password" />
-        </div>
-        <div id="signup-error" class="auth-error hidden"></div>
-        <button class="auth-submit" onclick="handleSignUp()">Create Account →</button>
-        <p class="auth-switch">Already have an account? <a href="#" onclick="switchAuthTab('signin'); return false;">Sign in</a></p>
-      </div>
-
-      <p class="auth-disclaimer">🔒 Your data stays local — no cloud storage.</p>
-    </div>
-  </div>
-
   <!-- Emergency Modal -->
   <div id="emergency-modal" class="emergency-modal hidden">
     <div class="em-overlay" onclick="closeEmergency()"></div>

@@ -3,231 +3,11 @@
    Page Navigation, Tab System, Feature Content
    ============================================================ */
 
-// ── AUTH SYSTEM (Supabase-backed via backend API) ─────────────
-var _authTarget = null;   // page to navigate to after successful auth
-
-// ─ helpers ─
-function _getCurrentUser() {
-  try { return JSON.parse(localStorage.getItem('nn_session') || 'null'); } catch (e) { return null; }
-}
-function _setCurrentUser(user) {
-  localStorage.setItem('nn_session', JSON.stringify(user));
-}
-function _clearCurrentUser() {
-  localStorage.removeItem('nn_session');
-}
-
-/** Resolve the backend base URL for local, Live Server, and LAN device access. */
-function _apiBase() {
-  var override = window.NEURALNEXUS_API_BASE || '';
-  if (!override) {
-    try {
-      override = localStorage.getItem('nn_api_base') || '';
-    } catch (e) {}
-  }
-  if (override) {
-    return override.replace(/\/+$/, '');
-  }
-
-  if (window.location.protocol === 'file:') {
-    return 'http://localhost:3001';
-  }
-
-  if (window.location.port === '3001') {
-    return window.location.origin;
-  }
-
-  var hostname = window.location.hostname || '';
-  var isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
-  var isPrivateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(hostname);
-
-  if (isLocalHost || isPrivateIpv4) {
-    return window.location.protocol + '//' + hostname + ':3001';
-  }
-
-  return window.location.origin;
-}
-
-/** Called by feature cards instead of navigateTo() directly */
+// ── ACCESS GATE ──────────────────────────────────────────────
+/** Backward-compatible entry point used by feature cards. */
 function requireAuth(page) {
-  if (_getCurrentUser()) {
-    navigateTo(page);
-  } else {
-    _authTarget = page;
-    document.getElementById('auth-modal').classList.remove('hidden');
-    switchAuthTab('signin');
-    setTimeout(function() { document.getElementById('signin-email').focus(); }, 50);
-  }
+  navigateTo(page);
 }
-
-function closeAuthModal() {
-  document.getElementById('auth-modal').classList.add('hidden');
-  _authTarget = null;
-  _clearAuthErrors();
-}
-
-function switchAuthTab(tab) {
-  var isSignin = (tab === 'signin');
-  document.getElementById('auth-tab-signin').classList.toggle('active', isSignin);
-  document.getElementById('auth-tab-signup').classList.toggle('active', !isSignin);
-  document.getElementById('auth-form-signin').classList.toggle('hidden', !isSignin);
-  document.getElementById('auth-form-signup').classList.toggle('hidden', isSignin);
-  _clearAuthErrors();
-}
-
-function _clearAuthErrors() {
-  ['signin-error', 'signup-error'].forEach(function(id) {
-    var el = document.getElementById(id);
-    el.textContent = '';
-    el.classList.add('hidden');
-  });
-}
-
-function _showAuthError(formType, msg) {
-  var el = document.getElementById(formType + '-error');
-  el.textContent = msg;
-  el.classList.remove('hidden');
-}
-
-function _setAuthLoading(formType, loading) {
-  var btn = document.querySelector('#auth-form-' + formType + ' .auth-submit');
-  if (!btn) return;
-  btn.disabled = loading;
-  btn.textContent = loading ? 'Please wait…' : (formType === 'signin' ? 'Sign In →' : 'Create Account →');
-}
-
-// ─ Sign In ─
-function handleSignIn() {
-  var email = document.getElementById('signin-email').value.trim().toLowerCase();
-  var password = document.getElementById('signin-password').value;
-
-  if (!email) { _showAuthError('signin', 'Please enter your email.'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { _showAuthError('signin', 'Please enter a valid email address.'); return; }
-  if (!password) { _showAuthError('signin', 'Please enter your password.'); return; }
-
-  _setAuthLoading('signin', true);
-  _clearAuthErrors();
-
-  fetch(_apiBase() + '/auth/signin', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email, password: password })
-  })
-  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-  .then(function(res) {
-    _setAuthLoading('signin', false);
-    if (!res.ok) {
-      _showAuthError('signin', res.data.error || 'Sign in failed.');
-      return;
-    }
-    _setCurrentUser({ name: res.data.name, email: res.data.email, access_token: res.data.access_token });
-    _afterAuth();
-  })
-  .catch(function() {
-    _setAuthLoading('signin', false);
-    _showAuthError('signin', 'Could not reach the server. Make sure the backend is running.');
-  });
-}
-
-// ─ Sign Up ─
-function handleSignUp() {
-  var name     = document.getElementById('signup-name').value.trim();
-  var email    = document.getElementById('signup-email').value.trim().toLowerCase();
-  var password = document.getElementById('signup-password').value;
-  var confirm  = document.getElementById('signup-confirm').value;
-
-  if (!name)    { _showAuthError('signup', 'Please enter your full name.'); return; }
-  if (!email)   { _showAuthError('signup', 'Please enter your email.'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { _showAuthError('signup', 'Please enter a valid email address.'); return; }
-  if (password.length < 6) { _showAuthError('signup', 'Password must be at least 6 characters.'); return; }
-  if (password !== confirm) { _showAuthError('signup', 'Passwords do not match.'); return; }
-
-  _setAuthLoading('signup', true);
-  _clearAuthErrors();
-
-  fetch(_apiBase() + '/auth/signup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name, email: email, password: password })
-  })
-  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-  .then(function(res) {
-    _setAuthLoading('signup', false);
-    if (!res.ok) {
-      _showAuthError('signup', res.data.error || 'Sign up failed.');
-      return;
-    }
-    _setCurrentUser({ name: res.data.name, email: res.data.email, access_token: res.data.access_token });
-    _afterAuth();
-  })
-  .catch(function() {
-    _setAuthLoading('signup', false);
-    _showAuthError('signup', 'Could not reach the server. Make sure the backend is running.');
-  });
-}
-
-function _afterAuth() {
-  document.getElementById('auth-modal').classList.add('hidden');
-  _clearAuthErrors();
-  _updateNavUserBadge();
-  ['signin-email','signin-password','signup-name','signup-email','signup-password','signup-confirm'].forEach(function(id) {
-    document.getElementById(id).value = '';
-  });
-  if (_authTarget) {
-    var dest = _authTarget;
-    _authTarget = null;
-    navigateTo(dest);
-  }
-}
-
-function signOut() {
-  var user = _getCurrentUser();
-  var token = user && user.access_token;
-  _clearCurrentUser();
-  _updateNavUserBadge();
-  navigateTo('landing');
-  // Best-effort server-side signout (fire and forget)
-  if (token) {
-    fetch(_apiBase() + '/auth/signout', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token }
-    }).catch(function() {});
-  }
-}
-
-function _updateNavUserBadge() {
-  var user = _getCurrentUser();
-  var navLinks = document.querySelector('.nav-links');
-  var existing = document.getElementById('nav-user-badge');
-  if (existing) existing.remove();
-  if (user) {
-    var initials = (user.name || '?').split(' ').map(function(w) { return w[0]; }).join('').slice(0,2).toUpperCase();
-    var badge = document.createElement('div');
-    badge.id = 'nav-user-badge';
-    badge.className = 'nav-user-badge';
-    badge.title = 'Signed in as ' + user.name;
-    badge.innerHTML =
-      '<div class="user-avatar">' + initials + '</div>' +
-      '<span>' + escapeHtml(user.name.split(' ')[0]) + '</span>';
-    badge.addEventListener('click', function() {
-      if (confirm('Sign out of NeuralNexus?')) signOut();
-    });
-    navLinks.appendChild(badge);
-  }
-}
-
-// Close modal on Escape key
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    var modal = document.getElementById('auth-modal');
-    if (modal && !modal.classList.contains('hidden')) closeAuthModal();
-  }
-});
-
-// Boot: restore nav badge if already logged in
-document.addEventListener('DOMContentLoaded', function() {
-  _updateNavUserBadge();
-});
 
 // ── PAGE NAVIGATION ──────────────────────────────────────────
 function navigateTo(page) {
@@ -946,7 +726,14 @@ var INDIA_BOUNDS = {
   maxLng: 97.5
 };
 
-var BACKEND_URL = _apiBase();
+var BACKEND_URL = (function() {
+  // When served by the Express backend, use same-origin relative paths
+  if (window.location.port === '3001') {
+    return window.location.origin;
+  }
+  // Live Server / static host should call backend explicitly on 3001
+  return window.location.protocol + '//localhost:3001';
+})();
 
 function locateAndSearch(placeType, tabId) {
   var panelBody = document.getElementById('panel-' + tabId) && document.getElementById('panel-' + tabId).querySelector('.panel-body');
@@ -1016,7 +803,7 @@ function searchNearbyPlaces(placeType, tabId) {
         try {
           data = JSON.parse(body);
         } catch (parseErr) {
-          throw new Error('Backend did not return JSON. Make sure the backend is running and reachable.');
+          throw new Error('Backend did not return JSON. Make sure backend is running on port 3001.');
         }
         if (!r.ok) {
           throw new Error(data.error || 'Request failed with status ' + r.status);
@@ -1799,14 +1586,21 @@ function updateTimerDisplay() {
 
 // ── DAILY DIARY FEATURE ──────────────────────────────────────
 var diaryLog = [];
+var DIARY_STORAGE_KEY = 'nn_diary_entries';
 
-function getDiaryAuthHeaders() {
-  var session = _getCurrentUser();
-  if (!session || !session.access_token) return null;
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + session.access_token
-  };
+function loadDiaryFromStorage() {
+  try {
+    var raw = localStorage.getItem(DIARY_STORAGE_KEY);
+    if (!raw) return [];
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveDiaryToStorage(entries) {
+  localStorage.setItem(DIARY_STORAGE_KEY, JSON.stringify(entries));
 }
 
 function getDiaryHTML() {
@@ -1850,13 +1644,6 @@ function renderDiaryEntriesList() {
 function saveDiaryEntry() {
   var textarea = document.getElementById('diary-textarea');
   if (!textarea) return;
-
-  var headers = getDiaryAuthHeaders();
-  if (!headers) {
-    alert('Please sign in again to use your diary.');
-    signOut();
-    return;
-  }
   
   var text = textarea.value.trim();
   if (!text) {
@@ -1870,111 +1657,41 @@ function saveDiaryEntry() {
     saveBtn.textContent = 'Saving...';
   }
 
-  fetch(BACKEND_URL + '/api/diary', {
-    method: 'POST',
-    headers: headers,
-    body: JSON.stringify({ text: text })
-  })
-  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-  .then(function(result) {
-    if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Save Entry';
-    }
+  var entry = {
+    id: Date.now(),
+    text: text,
+    date: new Date().toISOString()
+  };
 
-    if (!result.ok) {
-      if (result.status === 401) {
-        alert('Your session expired. Please sign in again.');
-        signOut();
-        return;
-      }
-      alert(result.data.error || 'Failed to save diary entry.');
-      return;
-    }
+  diaryLog.unshift(entry);
+  saveDiaryToStorage(diaryLog);
+  textarea.value = '';
 
-    diaryLog.unshift(result.data.entry);
-    textarea.value = '';
-    var container = document.getElementById('diary-entries-container');
-    if (container) container.innerHTML = renderDiaryEntriesList();
-  })
-  .catch(function() {
-    if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Save Entry';
-    }
-    alert('Failed to reach the server while saving your diary entry.');
-  });
+  var container = document.getElementById('diary-entries-container');
+  if (container) container.innerHTML = renderDiaryEntriesList();
+
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Entry';
+  }
 }
 
 function deleteDiaryEntry(id) {
   if (!confirm('Are you sure you want to delete this specific diary entry?')) return;
 
-  var headers = getDiaryAuthHeaders();
-  if (!headers) {
-    alert('Please sign in again to use your diary.');
-    signOut();
-    return;
-  }
+  diaryLog = diaryLog.filter(function(entry) { return String(entry.id) !== String(id); });
+  saveDiaryToStorage(diaryLog);
 
-  fetch(BACKEND_URL + '/api/diary/' + encodeURIComponent(id), {
-    method: 'DELETE',
-    headers: headers
-  })
-  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-  .then(function(result) {
-    if (!result.ok) {
-      if (result.status === 401) {
-        alert('Your session expired. Please sign in again.');
-        signOut();
-        return;
-      }
-      alert(result.data.error || 'Failed to delete diary entry.');
-      return;
-    }
-
-    diaryLog = diaryLog.filter(function(entry) { return String(entry.id) !== String(id); });
-    var container = document.getElementById('diary-entries-container');
-    if (container) container.innerHTML = renderDiaryEntriesList();
-  })
-  .catch(function() {
-    alert('Failed to reach the server while deleting your diary entry.');
-  });
+  var container = document.getElementById('diary-entries-container');
+  if (container) container.innerHTML = renderDiaryEntriesList();
 }
 
 function loadDiaryEntries() {
   var container = document.getElementById('diary-entries-container');
   if (!container) return;
 
-  var headers = getDiaryAuthHeaders();
-  if (!headers) {
-    container.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding: 20px;">Please sign in to load your diary entries.</p>';
-    return;
-  }
-
-  container.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding: 20px;">Loading entries...</p>';
-
-  fetch(BACKEND_URL + '/api/diary', {
-    method: 'GET',
-    headers: headers
-  })
-  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-  .then(function(result) {
-    if (!result.ok) {
-      if (result.status === 401) {
-        alert('Your session expired. Please sign in again.');
-        signOut();
-        return;
-      }
-      container.innerHTML = '<p style="color:#ffb86c; text-align:center; padding: 20px;">' + escapeHtml(result.data.error || 'Failed to load diary entries.') + '</p>';
-      return;
-    }
-
-    diaryLog = Array.isArray(result.data.entries) ? result.data.entries : [];
-    container.innerHTML = renderDiaryEntriesList();
-  })
-  .catch(function() {
-    container.innerHTML = '<p style="color:#ffb86c; text-align:center; padding: 20px;">Could not reach backend server.</p>';
-  });
+  diaryLog = loadDiaryFromStorage();
+  container.innerHTML = renderDiaryEntriesList();
 }
 
 // ── TAB FEATURE INITIALIZATION ───────────────────────────────
@@ -2008,7 +1725,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── AI CHATBOT ───────────────────────────────────────────────
-const CHAT_ENDPOINTS = [_apiBase() + '/chat'];
+const CHAT_ENDPOINTS = ['/chat', 'http://localhost:3001/chat'];
 var chatHistory = [];
 
 function initChatbot() {
@@ -2120,7 +1837,7 @@ async function sendChatMessage() {
     }
   } catch (err) {
     removeTypingIndicator();
-    appendMessage('ai', '⚠️ I could not connect to the AI service right now. Please make sure the backend server is running and reachable, then try again.');
+    appendMessage('ai', '⚠️ I could not connect to the AI service right now. Please make sure backend server is running on port 3001 and try again.');
   } finally {
     if (sendBtn) sendBtn.disabled = false;
     input.focus();
