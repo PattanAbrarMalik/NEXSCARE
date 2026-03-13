@@ -3,8 +3,209 @@
    Page Navigation, Tab System, Feature Content
    ============================================================ */
 
+// ── AUTH SYSTEM (Supabase-backed via backend API) ─────────────
+var _authTarget = null;   // page to navigate to after successful auth
+
+// ─ helpers ─
+function _getCurrentUser() {
+  try { return JSON.parse(localStorage.getItem('nn_session') || 'null'); } catch (e) { return null; }
+}
+function _setCurrentUser(user) {
+  localStorage.setItem('nn_session', JSON.stringify(user));
+}
+function _clearCurrentUser() {
+  localStorage.removeItem('nn_session');
+}
+
+/** Resolve the backend base URL (same-origin when served by Node, else localhost:3001). */
+function _apiBase() {
+  return (window.location.port === '3001') ? window.location.origin : window.location.protocol + '//localhost:3001';
+}
+
+/** Called by feature cards instead of navigateTo() directly */
+function requireAuth(page) {
+  if (_getCurrentUser()) {
+    navigateTo(page);
+  } else {
+    _authTarget = page;
+    document.getElementById('auth-modal').classList.remove('hidden');
+    switchAuthTab('signin');
+    setTimeout(function() { document.getElementById('signin-email').focus(); }, 50);
+  }
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.add('hidden');
+  _authTarget = null;
+  _clearAuthErrors();
+}
+
+function switchAuthTab(tab) {
+  var isSignin = (tab === 'signin');
+  document.getElementById('auth-tab-signin').classList.toggle('active', isSignin);
+  document.getElementById('auth-tab-signup').classList.toggle('active', !isSignin);
+  document.getElementById('auth-form-signin').classList.toggle('hidden', !isSignin);
+  document.getElementById('auth-form-signup').classList.toggle('hidden', isSignin);
+  _clearAuthErrors();
+}
+
+function _clearAuthErrors() {
+  ['signin-error', 'signup-error'].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.textContent = '';
+    el.classList.add('hidden');
+  });
+}
+
+function _showAuthError(formType, msg) {
+  var el = document.getElementById(formType + '-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function _setAuthLoading(formType, loading) {
+  var btn = document.querySelector('#auth-form-' + formType + ' .auth-submit');
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.textContent = loading ? 'Please wait…' : (formType === 'signin' ? 'Sign In →' : 'Create Account →');
+}
+
+// ─ Sign In ─
+function handleSignIn() {
+  var email = document.getElementById('signin-email').value.trim().toLowerCase();
+  var password = document.getElementById('signin-password').value;
+
+  if (!email) { _showAuthError('signin', 'Please enter your email.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { _showAuthError('signin', 'Please enter a valid email address.'); return; }
+  if (!password) { _showAuthError('signin', 'Please enter your password.'); return; }
+
+  _setAuthLoading('signin', true);
+  _clearAuthErrors();
+
+  fetch(_apiBase() + '/auth/signin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, password: password })
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+  .then(function(res) {
+    _setAuthLoading('signin', false);
+    if (!res.ok) {
+      _showAuthError('signin', res.data.error || 'Sign in failed.');
+      return;
+    }
+    _setCurrentUser({ name: res.data.name, email: res.data.email, access_token: res.data.access_token });
+    _afterAuth();
+  })
+  .catch(function() {
+    _setAuthLoading('signin', false);
+    _showAuthError('signin', 'Could not reach the server. Make sure the backend is running.');
+  });
+}
+
+// ─ Sign Up ─
+function handleSignUp() {
+  var name     = document.getElementById('signup-name').value.trim();
+  var email    = document.getElementById('signup-email').value.trim().toLowerCase();
+  var password = document.getElementById('signup-password').value;
+  var confirm  = document.getElementById('signup-confirm').value;
+
+  if (!name)    { _showAuthError('signup', 'Please enter your full name.'); return; }
+  if (!email)   { _showAuthError('signup', 'Please enter your email.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { _showAuthError('signup', 'Please enter a valid email address.'); return; }
+  if (password.length < 6) { _showAuthError('signup', 'Password must be at least 6 characters.'); return; }
+  if (password !== confirm) { _showAuthError('signup', 'Passwords do not match.'); return; }
+
+  _setAuthLoading('signup', true);
+  _clearAuthErrors();
+
+  fetch(_apiBase() + '/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name, email: email, password: password })
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+  .then(function(res) {
+    _setAuthLoading('signup', false);
+    if (!res.ok) {
+      _showAuthError('signup', res.data.error || 'Sign up failed.');
+      return;
+    }
+    _setCurrentUser({ name: res.data.name, email: res.data.email, access_token: res.data.access_token });
+    _afterAuth();
+  })
+  .catch(function() {
+    _setAuthLoading('signup', false);
+    _showAuthError('signup', 'Could not reach the server. Make sure the backend is running.');
+  });
+}
+
+function _afterAuth() {
+  document.getElementById('auth-modal').classList.add('hidden');
+  _clearAuthErrors();
+  _updateNavUserBadge();
+  ['signin-email','signin-password','signup-name','signup-email','signup-password','signup-confirm'].forEach(function(id) {
+    document.getElementById(id).value = '';
+  });
+  if (_authTarget) {
+    var dest = _authTarget;
+    _authTarget = null;
+    navigateTo(dest);
+  }
+}
+
+function signOut() {
+  var user = _getCurrentUser();
+  var token = user && user.access_token;
+  _clearCurrentUser();
+  _updateNavUserBadge();
+  navigateTo('landing');
+  // Best-effort server-side signout (fire and forget)
+  if (token) {
+    fetch(_apiBase() + '/auth/signout', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).catch(function() {});
+  }
+}
+
+function _updateNavUserBadge() {
+  var user = _getCurrentUser();
+  var navLinks = document.querySelector('.nav-links');
+  var existing = document.getElementById('nav-user-badge');
+  if (existing) existing.remove();
+  if (user) {
+    var initials = (user.name || '?').split(' ').map(function(w) { return w[0]; }).join('').slice(0,2).toUpperCase();
+    var badge = document.createElement('div');
+    badge.id = 'nav-user-badge';
+    badge.className = 'nav-user-badge';
+    badge.title = 'Signed in as ' + user.name;
+    badge.innerHTML =
+      '<div class="user-avatar">' + initials + '</div>' +
+      '<span>' + escapeHtml(user.name.split(' ')[0]) + '</span>';
+    badge.addEventListener('click', function() {
+      if (confirm('Sign out of NeuralNexus?')) signOut();
+    });
+    navLinks.appendChild(badge);
+  }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('auth-modal');
+    if (modal && !modal.classList.contains('hidden')) closeAuthModal();
+  }
+});
+
+// Boot: restore nav badge if already logged in
+document.addEventListener('DOMContentLoaded', function() {
+  _updateNavUserBadge();
+});
+
 // ── PAGE NAVIGATION ──────────────────────────────────────────
 function navigateTo(page) {
+  if (page !== 'depression') stopMoodMusic(true);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const target = document.getElementById('page-' + page);
   if (target) {
@@ -27,6 +228,7 @@ const TAB_TITLES = {
   'consult-doctor': '👨‍⚕️ Consult Doctor',
   'depression-test': '📋 Depression Test',
   'mood-tracker': '📊 Mood Tracker',
+  'music-therapy': '🎵 Mood Music',
   'ai-advice': '🤖 AI Advice',
   'meditation-guidance': '🧘 Meditation Guidance',
   'daily-diary': '📓 Daily Diary'
@@ -137,6 +339,8 @@ function closeTab(section, tabId, e) {
   var state = tabState[section];
   var idx = state.tabs.indexOf(tabId);
   if (idx === -1) return;
+
+  if (tabId === 'music-therapy') stopMoodMusic(true);
 
   state.tabs.splice(idx, 1);
 
@@ -377,6 +581,7 @@ function getTabContent(tabId) {
     case 'consult-doctor': return getConsultDoctorHTML();
     case 'depression-test': return getDepressionTestHTML();
     case 'mood-tracker': return getMoodTrackerHTML();
+    case 'music-therapy': return getMusicTherapyHTML();
     case 'ai-advice': return getAIAdviceHTML();
     case 'meditation-guidance': return getMeditationGuidanceHTML();
     case 'daily-diary': return getDiaryHTML();
@@ -708,26 +913,65 @@ function closeEmergency() {
 var currentLocation = null;
 var nearbyHospitals = [];
 var nearbyPharmacies = [];
+var INDIA_BOUNDS = {
+  minLat: 6.0,
+  maxLat: 38.6,
+  minLng: 68.0,
+  maxLng: 97.5
+};
 
-function getCurrentLocation() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      function(position) {
-        currentLocation = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        };
-        console.log('Location obtained:', currentLocation);
-        searchNearbyPlaces('hospital', 'nearby-hospitals');
-      },
-      function(error) {
-        console.error('Geolocation error:', error);
-        alert('Unable to get your location. Please enable location services.');
-      }
-    );
-  } else {
-    alert('Geolocation is not supported by your browser.');
+var BACKEND_URL = (function() {
+  // When served by the Express backend, use same-origin relative paths
+  if (window.location.port === '3001') {
+    return window.location.origin;
   }
+  // Live Server / static host should call backend explicitly on 3001
+  return window.location.protocol + '//localhost:3001';
+})();
+
+function locateAndSearch(placeType, tabId) {
+  var panelBody = document.getElementById('panel-' + tabId) && document.getElementById('panel-' + tabId).querySelector('.panel-body');
+  if (panelBody) {
+    panelBody.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:var(--text-dim);">📍 Getting your location…</p></div>';
+  }
+  if (currentLocation) {
+    if (!isInIndia(currentLocation.lat, currentLocation.lng)) {
+      panelBody.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:#ffb86c;">🇮🇳 This map feature is currently available for India locations only.</p></div>';
+      return;
+    }
+    searchNearbyPlaces(placeType, tabId);
+    return;
+  }
+  if (!navigator.geolocation) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+      currentLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      if (!isInIndia(currentLocation.lat, currentLocation.lng)) {
+        if (panelBody) {
+          panelBody.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:#ffb86c;">🇮🇳 This map feature is currently available for India locations only.</p></div>';
+        }
+        return;
+      }
+      searchNearbyPlaces(placeType, tabId);
+    },
+    function(error) {
+      console.error('Geolocation error:', error);
+      if (panelBody) {
+        panelBody.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:#ff6b6b;">⚠️ Unable to get your location. Please enable location services and try again.</p></div>';
+      }
+    }
+  );
+}
+
+function isInIndia(lat, lng) {
+  return lat >= INDIA_BOUNDS.minLat && lat <= INDIA_BOUNDS.maxLat &&
+         lng >= INDIA_BOUNDS.minLng && lng <= INDIA_BOUNDS.maxLng;
 }
 
 function searchNearbyPlaces(placeType, tabId) {
@@ -735,30 +979,48 @@ function searchNearbyPlaces(placeType, tabId) {
     alert('Location not available. Please enable location services.');
     return;
   }
-
-  var service = new google.maps.places.PlacesService(document.createElement('div'));
-  var searchType = placeType === 'hospital' ? 'hospital' : 'pharmacy';
-  
-  var request = {
-    location: new google.maps.LatLng(currentLocation.lat, currentLocation.lng),
-    radius: 5000,
-    type: searchType
-  };
-
-  service.nearbySearch(request, function(results, status) {
-    if (status === google.maps.places.PlacesServiceStatus.OK) {
+  if (!isInIndia(currentLocation.lat, currentLocation.lng)) {
+    var indiaOnlyPanel = document.getElementById('panel-' + tabId) && document.getElementById('panel-' + tabId).querySelector('.panel-body');
+    if (indiaOnlyPanel) {
+      indiaOnlyPanel.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:#ffb86c;">🇮🇳 This map feature is currently available for India locations only.</p></div>';
+    }
+    return;
+  }
+  var panelBody = document.getElementById('panel-' + tabId) && document.getElementById('panel-' + tabId).querySelector('.panel-body');
+  if (panelBody) {
+    panelBody.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:var(--text-dim);">🔍 Searching nearby ' + (placeType === 'hospital' ? 'hospitals' : 'pharmacies') + '…</p></div>';
+  }
+  fetch(BACKEND_URL + '/api/nearby-places?type=' + encodeURIComponent(placeType) + '&lat=' + currentLocation.lat + '&lng=' + currentLocation.lng)
+    .then(function(r) {
+      return r.text().then(function(body) {
+        var data;
+        try {
+          data = JSON.parse(body);
+        } catch (parseErr) {
+          throw new Error('Backend did not return JSON. Make sure backend is running on port 3001.');
+        }
+        if (!r.ok) {
+          throw new Error(data.error || 'Request failed with status ' + r.status);
+        }
+        return data;
+      });
+    })
+    .then(function(data) {
+      if (data.error) throw new Error(data.error);
       if (placeType === 'hospital') {
-        nearbyHospitals = results.slice(0, 8);
+        nearbyHospitals = data.results || [];
         updateNearbyHospitalsDisplay();
       } else {
-        nearbyPharmacies = results.slice(0, 8);
+        nearbyPharmacies = data.results || [];
         updateNearbyPharmaciesDisplay();
       }
-    } else {
-      console.error('Places service error:', status);
-      alert('Unable to find nearby ' + (placeType === 'hospital' ? 'hospitals' : 'pharmacies') + '. Please try again.');
-    }
-  });
+    })
+    .catch(function(err) {
+      console.error('Nearby places error:', err);
+      if (panelBody) {
+        panelBody.innerHTML = '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:#ff6b6b;">⚠️ ' + escapeHtml(err.message || 'Failed to load nearby places.') + '</p></div>';
+      }
+    });
 }
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -774,23 +1036,22 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 function updateNearbyHospitalsDisplay() {
-  var panelBody = document.querySelector('[data-tab-id="nearby-hospitals"] .panel-body') || 
-                  document.getElementById('panel-nearby-hospitals')?.querySelector('.panel-body');
+  var panelBody = document.getElementById('panel-nearby-hospitals') && document.getElementById('panel-nearby-hospitals').querySelector('.panel-body');
   if (!panelBody) return;
   
   var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Found ' + nearbyHospitals.length + ' hospitals near you</p></div><div class="hospital-grid">';
   nearbyHospitals.forEach(function(h) {
-    var distance = calculateDistance(currentLocation.lat, currentLocation.lng, h.geometry.location.lat(), h.geometry.location.lng());
-    var rating = h.rating ? '⭐ ' + h.rating.toFixed(1) : 'No rating';
-    var operational = h.opening_hours ? (h.opening_hours.open_now ? '🟢 Open Now' : '🔴 Closed') : 'Status Unknown';
-    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(h.name) + '&query_place_id=' + h.place_id + '\', \'_blank\')">' +
+    var distance = calculateDistance(currentLocation.lat, currentLocation.lng, h.lat, h.lng);
+    var hours = h.opening_hours ? '🕐 ' + h.opening_hours : 'Hours unknown';
+    var mapsQuery = encodeURIComponent((h.name || '') + (h.vicinity ? ', ' + h.vicinity : '') + ', India');
+    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.co.in/maps/search/?api=1&query=' + mapsQuery + '&region=IN\', \'_blank\')">' +
       '<h4>' + escapeHtml(h.name) + '</h4>' +
-      '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(h.vicinity) + '</p>' +
+      '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(h.vicinity || 'Address not available') + '</p>' +
       '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
       '<span>' + distance + ' km away</span>' +
-      '<span>' + rating + '</span>' +
+      (h.phone ? '<span>📞 ' + escapeHtml(h.phone) + '</span>' : '') +
       '</div>' +
-      '<span class="distance" style="margin-top:4px;display:block;">' + operational + '</span>' +
+      '<span class="distance" style="margin-top:4px;display:block;font-size:0.75rem;">' + escapeHtml(hours) + '</span>' +
       '</div>';
   });
   html += '</div>';
@@ -798,23 +1059,22 @@ function updateNearbyHospitalsDisplay() {
 }
 
 function updateNearbyPharmaciesDisplay() {
-  var panelBody = document.querySelector('[data-tab-id="nearby-pharmacy"] .panel-body') || 
-                  document.getElementById('panel-nearby-pharmacy')?.querySelector('.panel-body');
+  var panelBody = document.getElementById('panel-nearby-pharmacy') && document.getElementById('panel-nearby-pharmacy').querySelector('.panel-body');
   if (!panelBody) return;
   
   var html = '<div class="content-card"><h3>💊 Nearby Pharmacies</h3><p class="card-sub">Found ' + nearbyPharmacies.length + ' pharmacies near you</p></div><div class="hospital-grid">';
   nearbyPharmacies.forEach(function(p) {
-    var distance = calculateDistance(currentLocation.lat, currentLocation.lng, p.geometry.location.lat(), p.geometry.location.lng());
-    var rating = p.rating ? '⭐ ' + p.rating.toFixed(1) : 'No rating';
-    var operational = p.opening_hours ? (p.opening_hours.open_now ? '🟢 Open Now' : '🔴 Closed') : 'Status Unknown';
-    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.name) + '&query_place_id=' + p.place_id + '\', \'_blank\')">' +
+    var distance = calculateDistance(currentLocation.lat, currentLocation.lng, p.lat, p.lng);
+    var hours = p.opening_hours ? '🕐 ' + p.opening_hours : 'Hours unknown';
+    var mapsQuery = encodeURIComponent((p.name || '') + (p.vicinity ? ', ' + p.vicinity : '') + ', India');
+    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.co.in/maps/search/?api=1&query=' + mapsQuery + '&region=IN\', \'_blank\')">' +
       '<h4>' + escapeHtml(p.name) + '</h4>' +
-      '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(p.vicinity) + '</p>' +
+      '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(p.vicinity || 'Address not available') + '</p>' +
       '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
       '<span>' + distance + ' km away</span>' +
-      '<span>' + rating + '</span>' +
+      (p.phone ? '<span>📞 ' + escapeHtml(p.phone) + '</span>' : '') +
       '</div>' +
-      '<span class="distance" style="margin-top:4px;display:block;">' + operational + '</span>' +
+      '<span class="distance" style="margin-top:4px;display:block;font-size:0.75rem;">' + escapeHtml(hours) + '</span>' +
       '</div>';
   });
   html += '</div>';
@@ -823,8 +1083,8 @@ function updateNearbyPharmaciesDisplay() {
 
 // ── NEARBY HOSPITALS ─────────────────────────────────────────
 function getNearbyHospitalsHTML() {
-  var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Find hospitals near your current location.</p>';
-  html += '<button class="btn-primary btn-teal" onclick="getCurrentLocation(); searchNearbyPlaces(\'hospital\', \'nearby-hospitals\')" style="width:100%;margin-bottom:12px;"><span>📍</span> Get My Location & Search</button>';
+  var html = '<div class="content-card"><h3>🏥 Nearby Hospitals</h3><p class="card-sub">Find hospitals near your current location in India.</p>';
+  html += '<button class="btn-primary btn-teal" onclick="locateAndSearch(\'hospital\', \'nearby-hospitals\')" style="width:100%;margin-bottom:12px;"><span>📍</span> Get My Location &amp; Search</button>';
   html += '</div>';
   
   if (nearbyHospitals.length === 0) {
@@ -832,17 +1092,17 @@ function getNearbyHospitalsHTML() {
   } else {
     html += '<div class="hospital-grid">';
     nearbyHospitals.forEach(function(h) {
-      var distance = calculateDistance(currentLocation.lat, currentLocation.lng, h.geometry.location.lat(), h.geometry.location.lng());
-      var rating = h.rating ? '⭐ ' + h.rating.toFixed(1) : 'No rating';
-      var operational = h.opening_hours ? (h.opening_hours.open_now ? '🟢 Open Now' : '🔴 Closed') : 'Status Unknown';
-      html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(h.name) + '&query_place_id=' + h.place_id + '\', \'_blank\')">' +
+      var distance = calculateDistance(currentLocation.lat, currentLocation.lng, h.lat, h.lng);
+      var hours = h.opening_hours ? '🕐 ' + h.opening_hours : 'Hours unknown';
+      var mapsQuery = encodeURIComponent((h.name || '') + (h.vicinity ? ', ' + h.vicinity : '') + ', India');
+      html += '<div class="hospital-card" onclick="window.open(\'https://www.google.co.in/maps/search/?api=1&query=' + mapsQuery + '&region=IN\', \'_blank\')">' +
         '<h4>' + escapeHtml(h.name) + '</h4>' +
-        '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(h.vicinity) + '</p>' +
+        '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(h.vicinity || 'Address not available') + '</p>' +
         '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
         '<span>' + distance + ' km away</span>' +
-        '<span>' + rating + '</span>' +
+        (h.phone ? '<span>📞 ' + escapeHtml(h.phone) + '</span>' : '') +
         '</div>' +
-        '<span class="distance" style="margin-top:4px;display:block;">' + operational + '</span>' +
+        '<span class="distance" style="margin-top:4px;display:block;font-size:0.75rem;">' + escapeHtml(hours) + '</span>' +
         '</div>';
     });
     html += '</div>';
@@ -852,21 +1112,32 @@ function getNearbyHospitalsHTML() {
 }
 
 // ── NEARBY PHARMACY ──────────────────────────────────────────
-var PHARMACIES = [
-  { name:'MedPlus Pharmacy', addr:'100 Health Blvd', dist:'0.3 km', hours:'24/7' },
-  { name:'Apollo Pharmacy', addr:'200 Care St', dist:'0.7 km', hours:'8AM - 10PM' },
-  { name:'LifeLine Drugs', addr:'300 Wellness Ave', dist:'1.1 km', hours:'24/7' },
-  { name:'City Pharmacy', addr:'400 Medical Ln', dist:'1.5 km', hours:'9AM - 9PM' },
-  { name:'QuickMed Store', addr:'500 Cure Rd', dist:'0.9 km', hours:'7AM - 11PM' }
-];
-
 function getNearbyPharmacyHTML() {
-  var html = '<div class="content-card"><h3>💊 Nearby Pharmacies</h3><p class="card-sub">Find pharmacies near you.</p></div><div class="hospital-grid">';
-  PHARMACIES.forEach(function(p) {
-    html += '<div class="hospital-card" onclick="window.open(\'https://www.google.com/maps/search/' + encodeURIComponent(p.name + ' pharmacy') + '\', \'_blank\')">' +
-      '<h4>' + escapeHtml(p.name) + '</h4><p>' + escapeHtml(p.addr) + '</p><p style="font-size:0.78rem;color:var(--teal);margin-top:4px;">🕐 ' + p.hours + '</p><span class="distance">' + p.dist + '</span></div>';
-  });
+  var html = '<div class="content-card"><h3>💊 Nearby Pharmacies</h3><p class="card-sub">Find pharmacies near your current location in India.</p>';
+  html += '<button class="btn-primary btn-teal" onclick="locateAndSearch(\'pharmacy\', \'nearby-pharmacy\')" style="width:100%;margin-bottom:12px;"><span>📍</span> Get My Location &amp; Search</button>';
   html += '</div>';
+  
+  if (nearbyPharmacies.length === 0) {
+    html += '<div class="content-card" style="text-align:center;padding:40px 20px;"><p style="color:var(--text-dim);">📍 Click the button above to enable location and find nearby pharmacies.</p></div>';
+  } else {
+    html += '<div class="hospital-grid">';
+    nearbyPharmacies.forEach(function(p) {
+      var distance = calculateDistance(currentLocation.lat, currentLocation.lng, p.lat, p.lng);
+      var hours = p.opening_hours ? '🕐 ' + p.opening_hours : 'Hours unknown';
+      var mapsQuery = encodeURIComponent((p.name || '') + (p.vicinity ? ', ' + p.vicinity : '') + ', India');
+      html += '<div class="hospital-card" onclick="window.open(\'https://www.google.co.in/maps/search/?api=1&query=' + mapsQuery + '&region=IN\', \'_blank\')">' +
+        '<h4>' + escapeHtml(p.name) + '</h4>' +
+        '<p style="font-size:0.85rem;color:var(--text-dim);margin:4px 0;">' + escapeHtml(p.vicinity || 'Address not available') + '</p>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-top:6px;">' +
+        '<span>' + distance + ' km away</span>' +
+        (p.phone ? '<span>📞 ' + escapeHtml(p.phone) + '</span>' : '') +
+        '</div>' +
+        '<span class="distance" style="margin-top:4px;display:block;font-size:0.75rem;">' + escapeHtml(hours) + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+  }
+  
   return html;
 }
 
@@ -1069,6 +1340,131 @@ function analyzeDepression() {
 // ── MOOD TRACKER ─────────────────────────────────────────────
 var moodLog = JSON.parse(localStorage.getItem('nn_mood_log') || '[]');
 var selectedMoodEmoji = '';
+var MUSIC_THERAPY_PRESETS = {
+  anxious: {
+    title: 'Anxious / Overwhelmed',
+    emoji: '🌧️',
+    shortPrompt: 'I need something grounding',
+    description: 'Slow ambient tones with long breaths between each chord.',
+    tempo: 54,
+    waveform: 'sine',
+    padWaveform: 'triangle',
+    chordGain: 0.028,
+    bassGain: 0.04,
+    melodyGain: 0.016,
+    chordDuration: 3.4,
+    bassDuration: 2.6,
+    melodyDuration: 1.3,
+    chords: [
+      [261.63, 329.63, 392.0],
+      [220.0, 293.66, 349.23],
+      [196.0, 261.63, 329.63],
+      [220.0, 277.18, 329.63]
+    ],
+    bass: [130.81, 110.0, 98.0, 110.0],
+    melody: [392.0, 349.23, 329.63, 293.66]
+  },
+  low: {
+    title: 'Low / Sad',
+    emoji: '🌙',
+    shortPrompt: 'I want something gentle',
+    description: 'Warm piano-like layers that slowly lift in brightness.',
+    tempo: 60,
+    waveform: 'triangle',
+    padWaveform: 'sine',
+    chordGain: 0.03,
+    bassGain: 0.042,
+    melodyGain: 0.017,
+    chordDuration: 3.0,
+    bassDuration: 2.4,
+    melodyDuration: 1.2,
+    chords: [
+      [220.0, 261.63, 329.63],
+      [196.0, 246.94, 293.66],
+      [174.61, 220.0, 261.63],
+      [196.0, 246.94, 329.63]
+    ],
+    bass: [110.0, 98.0, 87.31, 98.0],
+    melody: [329.63, 293.66, 261.63, 293.66]
+  },
+  tired: {
+    title: 'Tired / Drained',
+    emoji: '☁️',
+    shortPrompt: 'I need to slow down',
+    description: 'A minimal, airy loop that keeps the mind calm without demanding attention.',
+    tempo: 58,
+    waveform: 'sine',
+    padWaveform: 'sawtooth',
+    chordGain: 0.02,
+    bassGain: 0.035,
+    melodyGain: 0.014,
+    chordDuration: 3.8,
+    bassDuration: 2.8,
+    melodyDuration: 1.0,
+    chords: [
+      [246.94, 311.13, 369.99],
+      [220.0, 277.18, 329.63],
+      [196.0, 246.94, 293.66],
+      [220.0, 261.63, 329.63]
+    ],
+    bass: [123.47, 110.0, 98.0, 110.0],
+    melody: [369.99, 329.63, 293.66, 329.63]
+  },
+  steady: {
+    title: 'Okay / Steady',
+    emoji: '🌿',
+    shortPrompt: 'Keep me balanced',
+    description: 'Even pulses and open chords for a stable, centered mood.',
+    tempo: 68,
+    waveform: 'triangle',
+    padWaveform: 'triangle',
+    chordGain: 0.026,
+    bassGain: 0.036,
+    melodyGain: 0.016,
+    chordDuration: 2.8,
+    bassDuration: 2.0,
+    melodyDuration: 0.95,
+    chords: [
+      [261.63, 329.63, 392.0],
+      [293.66, 369.99, 440.0],
+      [246.94, 329.63, 392.0],
+      [220.0, 293.66, 369.99]
+    ],
+    bass: [130.81, 146.83, 123.47, 110.0],
+    melody: [392.0, 440.0, 392.0, 369.99]
+  },
+  hopeful: {
+    title: 'Hopeful / Happy',
+    emoji: '☀️',
+    shortPrompt: 'Give me something bright',
+    description: 'A light, uplifting loop with soft movement and more sparkle.',
+    tempo: 76,
+    waveform: 'sine',
+    padWaveform: 'triangle',
+    chordGain: 0.024,
+    bassGain: 0.032,
+    melodyGain: 0.019,
+    chordDuration: 2.5,
+    bassDuration: 1.8,
+    melodyDuration: 0.9,
+    chords: [
+      [261.63, 329.63, 392.0],
+      [293.66, 392.0, 493.88],
+      [329.63, 415.3, 523.25],
+      [293.66, 369.99, 440.0]
+    ],
+    bass: [130.81, 146.83, 164.81, 146.83],
+    melody: [523.25, 493.88, 659.25, 587.33]
+  }
+};
+var musicTherapyState = {
+  context: null,
+  masterGain: null,
+  loopId: null,
+  isPlaying: false,
+  presetId: '',
+  step: 0
+};
 
 function getMoodTrackerHTML() {
   var moods = ['😊','🙂','😐','😔','😢'];
@@ -1113,6 +1509,188 @@ function renderMoodGrid() {
     days.push('<div class="mood-day"><span class="mood-emoji">' + (entry ? entry.mood : '·') + '</span><span class="mood-label">' + dayName + '</span></div>');
   }
   grid.innerHTML = days.join('');
+}
+
+function getMusicTherapyHTML() {
+  var moodKeys = ['anxious', 'low', 'tired', 'steady', 'hopeful'];
+  var html = '<div class="content-card"><h3>🎵 Mood Music</h3><p class="card-sub">How are you feeling right now? Choose the closest mood and the app will play a matching ambient loop.</p>' +
+    '<div class="music-mood-grid">';
+  moodKeys.forEach(function(key) {
+    var preset = MUSIC_THERAPY_PRESETS[key];
+    html += '<button class="music-mood-btn" data-mood="' + key + '" onclick="playMoodMusic(\'' + key + '\', this)">' +
+      '<span class="music-mood-emoji">' + preset.emoji + '</span>' +
+      '<span class="music-mood-title">' + escapeHtml(preset.title) + '</span>' +
+      '<span class="music-mood-copy">' + escapeHtml(preset.shortPrompt) + '</span>' +
+      '</button>';
+  });
+  html += '</div></div>';
+  html += '<div class="content-card music-player-card"><div class="music-player-top">' +
+    '<div><div class="music-player-label">Now playing</div><h3 id="music-player-title">Select your mood to start</h3>' +
+    '<p id="music-player-description" class="card-sub">The music begins after you answer how you feel.</p></div>' +
+    '<span id="music-player-badge" class="music-player-badge idle">Waiting</span></div>' +
+    '<div class="music-controls"><button class="music-control-btn" id="music-stop-btn" onclick="stopMoodMusic(true)" disabled>Stop</button>' +
+    '<label class="music-volume-control">Volume <input type="range" id="music-volume-slider" min="0" max="100" value="65" oninput="updateMoodMusicVolume(this.value)"><span id="music-volume-value">65%</span></label></div>' +
+    '<div id="music-therapy-status" class="music-therapy-status">Pick a mood above to hear a matching calming loop.</div></div>';
+  html += '<div class="disclaimer-card">⚕️ This audio feature is for comfort and grounding only. If you feel unsafe or overwhelmed, contact a trusted person or mental health professional.</div>';
+  return html;
+}
+
+function ensureMusicContext() {
+  if (musicTherapyState.context) return musicTherapyState.context;
+  var AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    alert('Audio playback is not supported in this browser.');
+    return null;
+  }
+
+  var context = new AudioContextCtor();
+  var masterGain = context.createGain();
+  masterGain.gain.value = 0.0001;
+  masterGain.connect(context.destination);
+
+  musicTherapyState.context = context;
+  musicTherapyState.masterGain = masterGain;
+  return context;
+}
+
+function updateMoodMusicVolume(value) {
+  var numericValue = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
+  var output = document.getElementById('music-volume-value');
+  if (output) output.textContent = numericValue + '%';
+
+  if (!musicTherapyState.context || !musicTherapyState.masterGain) return;
+  var targetGain = numericValue === 0 ? 0.0001 : (numericValue / 100) * 0.2;
+  var now = musicTherapyState.context.currentTime;
+  musicTherapyState.masterGain.gain.cancelScheduledValues(now);
+  musicTherapyState.masterGain.gain.setTargetAtTime(targetGain, now, 0.08);
+}
+
+function setSelectedMusicMoodButton(presetId) {
+  document.querySelectorAll('.music-mood-btn').forEach(function(btn) {
+    btn.classList.toggle('selected', btn.getAttribute('data-mood') === presetId);
+  });
+}
+
+function setMusicTherapyIdleState() {
+  var title = document.getElementById('music-player-title');
+  var description = document.getElementById('music-player-description');
+  var badge = document.getElementById('music-player-badge');
+  var status = document.getElementById('music-therapy-status');
+  var stopBtn = document.getElementById('music-stop-btn');
+
+  if (title) title.textContent = 'Select your mood to start';
+  if (description) description.textContent = 'The music begins after you answer how you feel.';
+  if (badge) {
+    badge.textContent = 'Waiting';
+    badge.className = 'music-player-badge idle';
+  }
+  if (status) status.textContent = 'Pick a mood above to hear a matching calming loop.';
+  if (stopBtn) stopBtn.disabled = true;
+}
+
+function renderMusicTherapyState(preset) {
+  var title = document.getElementById('music-player-title');
+  var description = document.getElementById('music-player-description');
+  var badge = document.getElementById('music-player-badge');
+  var status = document.getElementById('music-therapy-status');
+  var stopBtn = document.getElementById('music-stop-btn');
+
+  if (title) title.textContent = preset.emoji + ' ' + preset.title;
+  if (description) description.textContent = preset.description;
+  if (badge) {
+    badge.textContent = 'Playing';
+    badge.className = 'music-player-badge live';
+  }
+  if (status) status.textContent = 'Playing a ' + preset.title.toLowerCase() + ' loop based on your answer.';
+  if (stopBtn) stopBtn.disabled = false;
+}
+
+function triggerTone(context, output, frequency, startAt, duration, waveform, gainValue) {
+  if (!frequency) return;
+  var oscillator = context.createOscillator();
+  var envelope = context.createGain();
+  oscillator.type = waveform || 'sine';
+  oscillator.frequency.setValueAtTime(frequency, startAt);
+  envelope.gain.setValueAtTime(0.0001, startAt);
+  envelope.gain.exponentialRampToValueAtTime(Math.max(gainValue, 0.0001), startAt + 0.08);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+  oscillator.connect(envelope);
+  envelope.connect(output);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + duration + 0.05);
+}
+
+function playMoodMusicStep(preset) {
+  if (!musicTherapyState.context || !musicTherapyState.masterGain) return;
+
+  var step = musicTherapyState.step % preset.chords.length;
+  var context = musicTherapyState.context;
+  var startAt = context.currentTime + 0.03;
+  var chord = preset.chords[step];
+
+  triggerTone(context, musicTherapyState.masterGain, preset.bass[step], startAt, preset.bassDuration, 'sine', preset.bassGain);
+
+  chord.forEach(function(frequency, idx) {
+    triggerTone(context, musicTherapyState.masterGain, frequency, startAt + (idx * 0.02), preset.chordDuration, preset.padWaveform, preset.chordGain);
+  });
+
+  triggerTone(context, musicTherapyState.masterGain, preset.melody[step], startAt + 0.55, preset.melodyDuration, preset.waveform, preset.melodyGain);
+  musicTherapyState.step += 1;
+}
+
+function startMoodMusic(presetId) {
+  var preset = MUSIC_THERAPY_PRESETS[presetId];
+  if (!preset) return;
+
+  stopMoodMusic(false);
+  var context = ensureMusicContext();
+  if (!context) return;
+
+  musicTherapyState.presetId = presetId;
+  musicTherapyState.step = 0;
+  musicTherapyState.isPlaying = true;
+
+  var volumeSlider = document.getElementById('music-volume-slider');
+  updateMoodMusicVolume(volumeSlider ? volumeSlider.value : 65);
+  renderMusicTherapyState(preset);
+  setSelectedMusicMoodButton(presetId);
+
+  playMoodMusicStep(preset);
+  var intervalMs = Math.max(1500, Math.round((60000 / preset.tempo) * 2));
+  musicTherapyState.loopId = window.setInterval(function() {
+    playMoodMusicStep(preset);
+  }, intervalMs);
+}
+
+function playMoodMusic(presetId, btn) {
+  var context = ensureMusicContext();
+  if (!context) return;
+
+  context.resume().then(function() {
+    if (btn) btn.blur();
+    startMoodMusic(presetId);
+  }).catch(function() {
+    alert('Unable to start the music right now. Please try again.');
+  });
+}
+
+function stopMoodMusic(resetUI) {
+  if (musicTherapyState.loopId) {
+    clearInterval(musicTherapyState.loopId);
+    musicTherapyState.loopId = null;
+  }
+
+  if (musicTherapyState.context && musicTherapyState.masterGain) {
+    var now = musicTherapyState.context.currentTime;
+    musicTherapyState.masterGain.gain.cancelScheduledValues(now);
+    musicTherapyState.masterGain.gain.setTargetAtTime(0.0001, now, 0.12);
+  }
+
+  musicTherapyState.isPlaying = false;
+  musicTherapyState.presetId = '';
+  musicTherapyState.step = 0;
+  setSelectedMusicMoodButton('');
+  if (resetUI) setMusicTherapyIdleState();
 }
 
 // ── AI ADVICE ────────────────────────────────────────────────
@@ -1201,15 +1779,24 @@ function updateTimerDisplay() {
 }
 
 // ── DAILY DIARY FEATURE ──────────────────────────────────────
-var diaryLog = JSON.parse(localStorage.getItem('nn_diary_log') || '[]');
+var diaryLog = [];
+
+function getDiaryAuthHeaders() {
+  var session = _getCurrentUser();
+  if (!session || !session.access_token) return null;
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + session.access_token
+  };
+}
 
 function getDiaryHTML() {
   var html = '<div class="content-card"><h3>📓 Daily Diary</h3><p class="card-sub">Write down your thoughts. Journaling can help clear your mind and track your progress.</p>' +
     '<textarea id="diary-textarea" class="diary-textarea" placeholder="How are you feeling today? What happened?"></textarea>' +
-    '<button class="btn-primary btn-purple diary-btn" onclick="saveDiaryEntry()">Save Entry</button></div>';
+    '<button id="diary-save-btn" class="btn-primary btn-purple diary-btn" onclick="saveDiaryEntry()">Save Entry</button></div>';
   
   html += '<div class="content-card"><h3>📅 Past Entries</h3><div id="diary-entries-container" class="diary-entries-container">';
-  html += renderDiaryEntriesList();
+  html += '<p style="color:var(--text-dim); text-align:center; padding: 20px;">Loading entries...</p>';
   html += '</div></div>';
   return html;
 }
@@ -1244,40 +1831,131 @@ function renderDiaryEntriesList() {
 function saveDiaryEntry() {
   var textarea = document.getElementById('diary-textarea');
   if (!textarea) return;
+
+  var headers = getDiaryAuthHeaders();
+  if (!headers) {
+    alert('Please sign in again to use your diary.');
+    signOut();
+    return;
+  }
   
   var text = textarea.value.trim();
   if (!text) {
     alert('Please write something before saving.');
     return;
   }
-  
-  var newEntry = {
-    id: Date.now(),
-    date: new Date().toISOString(),
-    text: text
-  };
-  
-  diaryLog.push(newEntry);
-  localStorage.setItem('nn_diary_log', JSON.stringify(diaryLog));
-  
-  textarea.value = '';
-  
-  var container = document.getElementById('diary-entries-container');
-  if (container) {
-    container.innerHTML = renderDiaryEntriesList();
+
+  var saveBtn = document.getElementById('diary-save-btn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
   }
+
+  fetch(BACKEND_URL + '/api/diary', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({ text: text })
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+  .then(function(result) {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Entry';
+    }
+
+    if (!result.ok) {
+      if (result.status === 401) {
+        alert('Your session expired. Please sign in again.');
+        signOut();
+        return;
+      }
+      alert(result.data.error || 'Failed to save diary entry.');
+      return;
+    }
+
+    diaryLog.unshift(result.data.entry);
+    textarea.value = '';
+    var container = document.getElementById('diary-entries-container');
+    if (container) container.innerHTML = renderDiaryEntriesList();
+  })
+  .catch(function() {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Entry';
+    }
+    alert('Failed to reach the server while saving your diary entry.');
+  });
 }
 
 function deleteDiaryEntry(id) {
   if (!confirm('Are you sure you want to delete this specific diary entry?')) return;
-  
-  diaryLog = diaryLog.filter(entry => entry.id !== id);
-  localStorage.setItem('nn_diary_log', JSON.stringify(diaryLog));
-  
-  var container = document.getElementById('diary-entries-container');
-  if (container) {
-    container.innerHTML = renderDiaryEntriesList();
+
+  var headers = getDiaryAuthHeaders();
+  if (!headers) {
+    alert('Please sign in again to use your diary.');
+    signOut();
+    return;
   }
+
+  fetch(BACKEND_URL + '/api/diary/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: headers
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+  .then(function(result) {
+    if (!result.ok) {
+      if (result.status === 401) {
+        alert('Your session expired. Please sign in again.');
+        signOut();
+        return;
+      }
+      alert(result.data.error || 'Failed to delete diary entry.');
+      return;
+    }
+
+    diaryLog = diaryLog.filter(function(entry) { return String(entry.id) !== String(id); });
+    var container = document.getElementById('diary-entries-container');
+    if (container) container.innerHTML = renderDiaryEntriesList();
+  })
+  .catch(function() {
+    alert('Failed to reach the server while deleting your diary entry.');
+  });
+}
+
+function loadDiaryEntries() {
+  var container = document.getElementById('diary-entries-container');
+  if (!container) return;
+
+  var headers = getDiaryAuthHeaders();
+  if (!headers) {
+    container.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding: 20px;">Please sign in to load your diary entries.</p>';
+    return;
+  }
+
+  container.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding: 20px;">Loading entries...</p>';
+
+  fetch(BACKEND_URL + '/api/diary', {
+    method: 'GET',
+    headers: headers
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+  .then(function(result) {
+    if (!result.ok) {
+      if (result.status === 401) {
+        alert('Your session expired. Please sign in again.');
+        signOut();
+        return;
+      }
+      container.innerHTML = '<p style="color:#ffb86c; text-align:center; padding: 20px;">' + escapeHtml(result.data.error || 'Failed to load diary entries.') + '</p>';
+      return;
+    }
+
+    diaryLog = Array.isArray(result.data.entries) ? result.data.entries : [];
+    container.innerHTML = renderDiaryEntriesList();
+  })
+  .catch(function() {
+    container.innerHTML = '<p style="color:#ffb86c; text-align:center; padding: 20px;">Could not reach backend server.</p>';
+  });
 }
 
 // ── TAB FEATURE INITIALIZATION ───────────────────────────────
@@ -1286,6 +1964,20 @@ function initTabFeature(tabId) {
     case 'disease-detection': initDiseaseDetection(); break;
     case 'mood-tracker':
       setTimeout(function() { renderMoodGrid(); }, 50);
+      break;
+    case 'daily-diary':
+      setTimeout(function() { loadDiaryEntries(); }, 50);
+      break;
+    case 'music-therapy':
+      setTimeout(function() {
+        updateMoodMusicVolume(65);
+        if (musicTherapyState.isPlaying && musicTherapyState.presetId) {
+          renderMusicTherapyState(MUSIC_THERAPY_PRESETS[musicTherapyState.presetId]);
+          setSelectedMusicMoodButton(musicTherapyState.presetId);
+        } else {
+          setMusicTherapyIdleState();
+        }
+      }, 50);
       break;
   }
 }

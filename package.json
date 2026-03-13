@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "start": "node backend/server.js",
+    "dev": "npm --prefix backend run dev",
     "start:backend": "node backend/server.js",
     "build:helpmate": "npm --prefix Helpmate-AI run build"
   },
