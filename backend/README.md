@@ -25,7 +25,7 @@ Express.js backend server for the NeuralNexus mental health AI chatbot powered b
    npm run dev
    ```
 
-The server will run on `http://localhost:3001`
+The server will run on `http://localhost:3001` and also bind to your machine's LAN IP so other devices on the same network can reach it at `http://<your-computer-ip>:3001`.
 
 ## API Endpoints
 

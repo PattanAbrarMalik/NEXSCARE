@@ -17,9 +17,27 @@ function _clearCurrentUser() {
   localStorage.removeItem('nn_session');
 }
 
-/** Resolve the backend base URL (same-origin when served by Node, else localhost:3001). */
+/** Resolve the backend base URL for local, Live Server, and LAN device access. */
 function _apiBase() {
-  return (window.location.port === '3001') ? window.location.origin : window.location.protocol + '//localhost:3001';
+  var override = window.NEURALNEXUS_API_BASE || '';
+  if (!override) {
+    try {
+      override = localStorage.getItem('nn_api_base') || '';
+    } catch (e) {}
+  }
+  if (override) {
+    return override.replace(/\/+$/, '');
+  }
+
+  if (window.location.protocol === 'file:') {
+    return 'http://localhost:3001';
+  }
+
+  if (window.location.port === '3001') {
+    return window.location.origin;
+  }
+
+  return window.location.protocol + '//' + window.location.hostname + ':3001';
 }
 
 /** Called by feature cards instead of navigateTo() directly */

@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -20,6 +21,7 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY &&
 }
 
 const app = express();
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = process.env.PORT || 3001;
 const MAIN_APP_DIR = path.join(__dirname, '..');
 
@@ -443,8 +445,32 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ NeuralNexus AI Backend running on http://localhost:${PORT}`);
+function getServerUrls(port) {
+  const seen = new Set();
+  const urls = [`http://localhost:${port}`];
+  const interfaces = os.networkInterfaces();
+
+  Object.keys(interfaces).forEach(function(name) {
+    (interfaces[name] || []).forEach(function(details) {
+      if (!details || details.family !== 'IPv4' || details.internal) {
+        return;
+      }
+      const url = `http://${details.address}:${port}`;
+      if (!seen.has(url)) {
+        seen.add(url);
+        urls.push(url);
+      }
+    });
+  });
+
+  return urls;
+}
+
+app.listen(PORT, HOST, () => {
+  console.log(`✅ NeuralNexus AI Backend listening on ${HOST}:${PORT}`);
+  getServerUrls(PORT).forEach(function(url) {
+    console.log(`   ${url}`);
+  });
 });
 
 // Prevent unhandled rejections/exceptions from crashing the process
