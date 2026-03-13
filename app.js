@@ -37,7 +37,15 @@ function _apiBase() {
     return window.location.origin;
   }
 
-  return window.location.protocol + '//' + window.location.hostname + ':3001';
+  var hostname = window.location.hostname || '';
+  var isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+  var isPrivateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(hostname);
+
+  if (isLocalHost || isPrivateIpv4) {
+    return window.location.protocol + '//' + hostname + ':3001';
+  }
+
+  return window.location.origin;
 }
 
 /** Called by feature cards instead of navigateTo() directly */
@@ -938,14 +946,7 @@ var INDIA_BOUNDS = {
   maxLng: 97.5
 };
 
-var BACKEND_URL = (function() {
-  // When served by the Express backend, use same-origin relative paths
-  if (window.location.port === '3001') {
-    return window.location.origin;
-  }
-  // Live Server / static host should call backend explicitly on 3001
-  return window.location.protocol + '//localhost:3001';
-})();
+var BACKEND_URL = _apiBase();
 
 function locateAndSearch(placeType, tabId) {
   var panelBody = document.getElementById('panel-' + tabId) && document.getElementById('panel-' + tabId).querySelector('.panel-body');
@@ -1015,7 +1016,7 @@ function searchNearbyPlaces(placeType, tabId) {
         try {
           data = JSON.parse(body);
         } catch (parseErr) {
-          throw new Error('Backend did not return JSON. Make sure backend is running on port 3001.');
+          throw new Error('Backend did not return JSON. Make sure the backend is running and reachable.');
         }
         if (!r.ok) {
           throw new Error(data.error || 'Request failed with status ' + r.status);
@@ -2007,7 +2008,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── AI CHATBOT ───────────────────────────────────────────────
-const CHAT_ENDPOINTS = ['/chat', 'http://localhost:3001/chat'];
+const CHAT_ENDPOINTS = [_apiBase() + '/chat'];
 var chatHistory = [];
 
 function initChatbot() {
@@ -2119,7 +2120,7 @@ async function sendChatMessage() {
     }
   } catch (err) {
     removeTypingIndicator();
-    appendMessage('ai', '⚠️ I could not connect to the AI service right now. Please make sure backend server is running on port 3001 and try again.');
+    appendMessage('ai', '⚠️ I could not connect to the AI service right now. Please make sure the backend server is running and reachable, then try again.');
   } finally {
     if (sendBtn) sendBtn.disabled = false;
     input.focus();

@@ -1,6 +1,6 @@
 # NeuralNexus AI Backend
 
-Express.js backend server for the NeuralNexus mental health AI chatbot powered by Google Gemini API.
+Express.js backend server for the NeuralNexus mental health AI chatbot powered by OpenRouter, with Supabase-backed auth and user data.
 
 ## Setup
 
@@ -11,9 +11,11 @@ Express.js backend server for the NeuralNexus mental health AI chatbot powered b
 
 2. **Configure environment variables:**
    - Copy `.env.example` to `.env`
-   - Add your Google Gemini API key:
+   - Add your OpenRouter and Supabase credentials:
      ```
-     GEMINI_API_KEY=your_api_key_here
+     OPENROUTER_API_KEY=your_api_key_here
+     SUPABASE_URL=https://your-project-ref.supabase.co
+     SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
      ```
 
 3. **Start the server:**
@@ -69,3 +71,4 @@ Health check endpoint.
 - Crisis intervention guidance
 - Conversation history support
 - CORS enabled for frontend integration
+- Supabase-backed sign up, sign in, and diary storage

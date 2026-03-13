@@ -9,7 +9,6 @@
     "debug": "nodemon --inspect server.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.49.4",
     "axios": "^1.13.6",
     "cors": "^2.8.5",
